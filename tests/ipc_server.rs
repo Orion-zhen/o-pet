@@ -1,12 +1,12 @@
-#![cfg(unix)]
-
 use std::{
     io::Write,
-    os::unix::{fs::PermissionsExt, net::UnixListener},
-    path::Path,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver},
     time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::{fs::PermissionsExt, net::UnixListener};
 
 use interprocess::local_socket::{GenericFilePath, Stream, ToFsName as _, traits::Stream as _};
 use o_pet::{
@@ -19,7 +19,7 @@ const WAIT: Duration = Duration::from_secs(2);
 #[test]
 fn switches_between_clients_and_falls_back_when_connections_close() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let endpoint = directory.path().join("o-pet.sock");
+    let endpoint = test_endpoint(&directory);
     let (server, activities) = start_server(&endpoint);
     let mut first = connect(&endpoint);
     send(
@@ -69,7 +69,7 @@ fn switches_between_clients_and_falls_back_when_connections_close() {
 #[test]
 fn malformed_and_unknown_lines_do_not_change_state_and_later_lines_recover() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let endpoint = directory.path().join("o-pet.sock");
+    let endpoint = test_endpoint(&directory);
     let (server, activities) = start_server(&endpoint);
     let mut client = connect(&endpoint);
     send(
@@ -104,7 +104,7 @@ fn malformed_and_unknown_lines_do_not_change_state_and_later_lines_recover() {
 #[test]
 fn oversized_line_closes_only_that_connection_and_bounds_the_decoder() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let endpoint = directory.path().join("o-pet.sock");
+    let endpoint = test_endpoint(&directory);
     let (server, activities) = start_server(&endpoint);
     let mut oversized = connect(&endpoint);
     let mut input = b"{\"type\":\"hello\",\"clientId\":\"one\",\"sessionId\":\"s1\"}\n".to_vec();
@@ -130,10 +130,11 @@ fn oversized_line_closes_only_that_connection_and_bounds_the_decoder() {
     server.shutdown();
 }
 
+#[cfg(unix)]
 #[test]
 fn protects_socket_and_reclaims_only_a_confirmed_stale_socket() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let endpoint = directory.path().join("o-pet.sock");
+    let endpoint = test_endpoint(&directory);
     let stale = UnixListener::bind(&endpoint).expect("stale socket fixture");
     drop(stale);
 
@@ -153,7 +154,27 @@ fn protects_socket_and_reclaims_only_a_confirmed_stale_socket() {
     server.shutdown();
 }
 
+fn test_endpoint(directory: &tempfile::TempDir) -> PathBuf {
+    #[cfg(unix)]
+    {
+        directory.path().join("o-pet.sock")
+    }
+    #[cfg(windows)]
+    {
+        let unique = directory
+            .path()
+            .file_name()
+            .expect("temporary directory name")
+            .to_string_lossy();
+        PathBuf::from(format!(
+            r"\\.\pipe\o-pet-test-{}-{unique}",
+            std::process::id()
+        ))
+    }
+}
+
 fn start_server(endpoint: &Path) -> (Server, Receiver<AnimationUpdate>) {
+    #[cfg(unix)]
     std::fs::set_permissions(
         endpoint.parent().expect("endpoint parent"),
         std::fs::Permissions::from_mode(0o700),
