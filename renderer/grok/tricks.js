@@ -6,7 +6,6 @@
     { h: 48, d: 0.5 },
     { h: 28, d: 0.382 },
     { h: 14, d: 0.27 },
-    { h: 6, d: 0.177 },
   ];
   const HOP_DUR = HOP_SEGS.reduce((s, x) => s + x.d, 0);
 

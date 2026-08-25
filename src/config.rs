@@ -7,7 +7,7 @@ use csscolorparser::parse;
 use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const DEFAULT_SIZE: i32 = 240;
+pub(crate) const DEFAULT_SIZE: i32 = 120;
 pub(crate) const MAX_SIZE: i32 = 1024;
 pub(crate) const MIN_SIZE: i32 = 64;
 

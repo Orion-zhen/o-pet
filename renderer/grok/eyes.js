@@ -79,7 +79,8 @@
       const poly = polys[i];
       const [Gn, Ti] = cents[i];
       eyeEls[i].setAttribute("d", polyPath(poly));
-      const lid = winkLid(blinkX, now, winkAt, winkEye, i);
+      const eyeLid = opt.eyeLids?.[i] ?? 1;
+      const lid = winkLid(blinkX * eyeLid, now, winkAt, winkEye, i);
       const Ea = Gn + (i === 0 ? sX : 0);
       let Ca = Re + $i.x;
       let Wo = (Ea - Re) * $i.sx;
@@ -135,8 +136,8 @@
         Tre = Dke(clamp(Io0 / 0.5, 0, 1));
       }
 
-      let Kj = Math.sin(now * 42e-5 + i) * 1.4 + Math.sin(now * 0.001 + i * 2) * 0.5;
-      let Ko = Math.sin(now * 58e-5 + i) * 0.9;
+      let Kj = opt.steadyGaze ? 0 : Math.sin(now * 42e-5 + i) * 1.4 + Math.sin(now * 0.001 + i * 2) * 0.5;
+      let Ko = opt.steadyGaze ? 0 : Math.sin(now * 58e-5 + i) * 0.9;
       if (pointer) {
         Kj += pointer.x * (1 - 0.6 * Vn) + pullX;
         Ko += pointer.y * (1 - 0.6 * Vn) + pullY;

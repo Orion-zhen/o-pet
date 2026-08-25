@@ -58,7 +58,7 @@ struct SystemTray {
 impl SystemTray {
     fn new(commands: async_channel::Sender<TrayCommand>) -> io::Result<Self> {
         let mut icon = super::icon::load_tray_icon()?;
-        for pixel in icon.pixels.chunks_exact_mut(4) {
+        for pixel in icon.pixels.as_chunks_mut::<4>().0 {
             pixel.rotate_right(1);
         }
         Ok(Self {

@@ -13,7 +13,7 @@
     GROUPS, EYE_PLAYLIST, EYE_HOLD_MS, BLINK_MS,
     ONBOARDING, ONBOARDING_MS, onboardMood,
     SPRINGS, FACE_TUNE, POSE, POSE_HOME, UNIFORM_EYES,
-    V_T, B_T, WINK_STATES, poseScale, shapeEyeScale, overlayViewZoom,
+    WINK_STATES, poseScale, shapeEyeScale, overlayViewZoom,
     VIEW, VIEW_HALF, VIEW_MID, inkFg, inkCss, EYE_BG,
   } = T;
 
@@ -29,6 +29,10 @@
       this.expressionState = null;
       this.effectState = null;
       this.gazeState = null;
+      this.sceneDirection = 0;
+      this.sceneVariant = null;
+      this.faceRoll = 0;
+      this.eyeLids = null;
       this.onChange = opts.onChange || (() => {});
       this.loginWrap = opts.loginWrap !== false;
       this.eyeTopology = opts.eyeTopology ?? this.loginWrap;
@@ -41,6 +45,7 @@
       this.followPointer = !!opts.followPointer;
       this.gazeTarget = opts.gazeTarget || null;
       this.paused = !!opts.paused;
+      this.pausedAt = null;
       this.reduceMotion = opts.reduceMotion ?? (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
       this.badgeColor = opts.badgeColor || "var(--gb-badge, #1d9bf0)";
       this.sizePx = opts.sizePx || null;
@@ -71,6 +76,7 @@
       this._fromPolys = null;
 
       this.t0 = performance.now();
+      if (this.paused) this.pausedAt = this.t0;
       this.stateAt = this.t0;
       this.poseAt = this.t0;
       this.effectAt = this.t0;
@@ -86,7 +92,6 @@
       this.spinTurn = null;
       this.trick = null;
       this.hopAt = -1;
-      this.trickAt = this.t0 + rand(2500, 5000);
       this.trickCycle = Math.floor(rand(0, 5));
       this.wildWide = false;
       this.ovSpin = 0;
@@ -133,6 +138,12 @@
       return {
         nodUntil: now + 1800,
         nodEnd: 0,
+        idleShiftAt: now + rand(7000, 15_000),
+        idleShiftEnd: 0,
+        idleShiftDuration: 1,
+        idleShiftDirection: 1,
+        sleepTwitchAt: now + rand(18_000, 34_000),
+        sleepTwitchEnd: 0,
         angryShakeUntil: 0,
         impulseAt: now + rand(500, 1200),
         tyKick: 0,
@@ -149,14 +160,20 @@
         notifyPop: false,
         wantBurst: null,
         wakingBurst: false,
+        stretchBlinked: false,
+        quizzicalBlinked: false,
       };
+    }
+
+    _now() {
+      return this.paused && this.pausedAt !== null ? this.pausedAt : performance.now();
     }
 
     setMode(mode) {
       this.mode = mode;
       if (mode === "onboarding") {
         this.moodN = 0;
-        this.stateAt = performance.now();
+        this.stateAt = this._now();
         this.setState("idle", { resetEyes: true });
       }
     }
@@ -166,10 +183,33 @@
       if (paused === this.paused) return;
       this.paused = paused;
       if (paused) {
+        this.pausedAt = performance.now();
+        this.particles?.setPaused(true, this.pausedAt);
         if (this._raf !== null) cancelAnimationFrame(this._raf);
         this._raf = null;
       } else {
-        this.last = performance.now();
+        const resumedAt = performance.now();
+        const delta = this.pausedAt === null ? 0 : resumedAt - this.pausedAt;
+        this.pausedAt = null;
+        for (const key of [
+          "t0", "stateAt", "poseAt", "effectAt", "eyeUntil", "blinkUntil", "gazeUntil",
+          "winkUntil", "ovRestAt", "celebrateAt",
+        ]) {
+          if (Number.isFinite(this[key]) && this[key] > -1e8) this[key] += delta;
+        }
+        if (this.winkAt > -1e8) this.winkAt += delta;
+        if (this.fx && this.fx.overlayAt > 0) this.fx.overlayAt += delta;
+        if (this.hopAt >= 0) this.hopAt += delta;
+        if (this.trick) this.trick.t0 += delta;
+        for (const key of [
+          "nodUntil", "nodEnd", "angryShakeUntil", "impulseAt", "slumpAt", "stAt",
+          "idleShiftAt", "idleShiftEnd", "sleepTwitchAt", "sleepTwitchEnd",
+        ]) {
+          if (this.ctx[key] > 0) this.ctx[key] += delta;
+        }
+        for (const blink of this.blinkQueue) blink.at += delta;
+        this.particles?.setPaused(false, resumedAt);
+        this.last = resumedAt;
         this._raf = requestAnimationFrame((t) => this._tick(t));
       }
     }
@@ -256,6 +296,8 @@
       const expression = scene.expression ?? this.expressionState ?? pose;
       const effect = hasEffect ? scene.effect : (this.poseState === null ? pose : this.effectState);
       const gaze = scene.gaze ?? this.gazeState ?? expression;
+      const direction = scene.direction === -1 || scene.direction === 1 ? scene.direction : 0;
+      const variant = typeof scene.variant === "string" ? scene.variant : null;
       if (!EYE_PLAYLIST[pose] || !EYE_PLAYLIST[expression] || !EYE_PLAYLIST[gaze]) return;
       if (effect !== null && !EYE_PLAYLIST[effect]) return;
 
@@ -263,17 +305,20 @@
       const expressionChanged = expression !== this.expressionState;
       const effectChanged = effect !== this.effectState;
       const gazeChanged = gaze !== this.gazeState;
-      if (!poseChanged && !expressionChanged && !effectChanged && !gazeChanged && !resetEyes) return;
+      const performanceChanged = direction !== this.sceneDirection || variant !== this.sceneVariant;
+      if (!poseChanged && !expressionChanged && !effectChanged && !gazeChanged && !performanceChanged && !resetEyes) return;
 
-      const now = performance.now();
+      const now = this._now();
       this.state = pose;
       this.stateAt = now;
       this.poseState = pose;
       this.expressionState = expression;
       this.effectState = effect;
       this.gazeState = gaze;
+      this.sceneDirection = direction;
+      this.sceneVariant = variant;
 
-      if (poseChanged) {
+      if (poseChanged || performanceChanged) {
         this.poseAt = now;
         this.ctx = this._freshCtx(now);
         this.ctx.stAt = now + (
@@ -282,6 +327,7 @@
           : pose === "working" ? rand(1200, 2400)
           : rand(6000, 10000)
         );
+        if (pose === "drowsy") this.ctx.nodUntil = now + rand(12_000, 24_000);
         this.celebrateAt = pose === "celebrate" ? now + 140 : -1;
         this.trick = null;
         this.spinTurn = null;
@@ -320,7 +366,15 @@
         if (effect !== null) this.effectAt = now;
         if (effect !== null && effect !== "writing") this.fx?.resetInk();
       }
-      if (gazeChanged) this.gazeUntil = now + rand(500, 1400);
+      if (gazeChanged) {
+        if (gaze === "front" || gaze === "sleeping") {
+          this.gazeX.t = 0;
+          this.gazeY.t = 0;
+          this.gazeUntil = now + rand(5000, 8000);
+        } else {
+          this.gazeUntil = now + rand(500, 1400);
+        }
+      }
 
       try {
         this.onChange(this.snapshot());
@@ -354,15 +408,21 @@
       this.blink.x = 1;
       this.blink.v = 0;
       this.blink.t = 1;
-      this.winkAt = performance.now();
+      this.winkAt = this._now();
       this.winkEye = eye === 0 ? 0 : 1;
     }
 
-    spinOnce(turns = 1) {
-      this._pn(turns);
+    spinOnce(turns = 1, direction = sign()) {
+      this._pn(turns, direction);
     }
     bounceOnce() {
-      this._hop(performance.now());
+      this._hop(this._now());
+    }
+    pounceOnce(direction = 0, strength = 1) {
+      if (this.reduceMotion || this.paused) return;
+      this.tx.v += direction * 95 * strength;
+      this.ty.v -= 115 * strength;
+      this.squash.v += 2.5 * strength;
     }
     burstOnce() {
       if (!this.reduceMotion) this.particles.burst(22, 1.1, 0.3);
@@ -422,6 +482,7 @@
       this.body.setAttribute("fill", "var(--fg, #000)");
       const eyesG = document.createElementNS(ns, "g");
       eyesG.setAttribute("clip-path", `url(#${clipId})`);
+      this.eyesG = eyesG;
       this.eyeEls = [0, 1].map(() => {
         const p = document.createElementNS(ns, "path");
         p.setAttribute("fill", "var(--bg, #f3efe6)");
@@ -556,7 +617,8 @@
     }
 
     _updatePointer(now) {
-      const src = this.gazeTarget || (this.followPointer ? this.pointerRaw : null);
+      const lockFront = this.gazeState === "front" || this.gazeState === "sleeping";
+      const src = lockFront ? null : (this.gazeTarget || (this.followPointer ? this.pointerRaw : null));
       if (src && this.svg.getBoundingClientRect) {
         if (now - this.rectAt > 200) {
           this.rectCache = this.svg.getBoundingClientRect();
@@ -599,12 +661,17 @@
         eyeMorphX: this.eyeMorph.x,
         blinkX: this.blink.x,
         effectState: this.effectState,
+        direction: this.sceneDirection,
+        variant: this.sceneVariant,
+        reduceMotion: this.reduceMotion,
       });
       this.spin.t = pose.spin;
       this.tx.t = pose.tx;
       this.ty.t = pose.ty;
       this.squash.t = pose.squash;
       this.eyeScale.t = pose.eyeBoost;
+      this.faceRoll = pose.faceRoll;
+      this.eyeLids = pose.eyeLids;
       if (this.ctx.tyKick) {
         this.ty.v += this.ctx.tyKick;
         this.ctx.tyKick = 0;
@@ -647,20 +714,6 @@
         this.celebrateAt = now + 6200;
       }
 
-      if (now >= this.trickAt) {
-        if ((V_T.has(this.poseState) || B_T.has(this.poseState)) && !this.spinTurn && this.hopAt < 0 && !this.trick) {
-          const z = Math.random();
-          if (V_T.has(this.poseState)) {
-            if (z < 0.55) this._pn(1);
-            else this.trick = TR.startTrick("spinBounce", this.reduceMotion);
-          } else if (z < 0.34) this.trick = TR.startTrick("spinBounce", this.reduceMotion);
-          else if (z < 0.62) this._hop(now);
-          else if (z < 0.86) this.trick = TR.startTrick("spinDizzy", this.reduceMotion);
-          else this._pn(1);
-        }
-        this.trickAt = now + rand(9000, 18000);
-      }
-
       const tf = TR.evalTrick(this.trick, now);
       if (tf.wantHop) this._hop(now);
       if (tf.done) this.trick = null;
@@ -695,7 +748,7 @@
       this.blink.t = blinkKey ?? (this.blinkQueue.length ? this.blink.t : (this.extras.lidMul ?? pose.lid));
 
       if (now >= this.gazeUntil) {
-        const gz = nextGaze(this.gazeState);
+        const gz = nextGaze(this.gazeState, this.sceneDirection);
         this.gazeX.t = gz.x;
         this.gazeY.t = gz.y;
         this.gazeUntil = now + rand(...gz.hold);
@@ -863,7 +916,14 @@
       let cyl = overlayLive ? this.overlayTurn.x : null;
       if (ex.turn != null) cyl = (cyl ?? 0) + ex.turn;
       const ringHint = morphing || turned ? liveRing : null;
-      const hasPtr = !!(this.gazeTarget || (this.followPointer && this.pointerRaw));
+      const steadyGaze = this.gazeState === "front" || this.gazeState === "sleeping";
+      const hasPtr = !steadyGaze && !!(this.gazeTarget || (this.followPointer && this.pointerRaw));
+      this.eyesG.setAttribute(
+        "transform",
+        Math.abs(this.faceRoll) > 0.01
+          ? `rotate(${this.faceRoll.toFixed(2)} ${R} ${R})`
+          : ""
+      );
       EY.paintEyes({
         now,
         polys,
@@ -891,6 +951,8 @@
         G9e: geo.G9e,
         VJt: geo.VJt,
         extras: ex,
+        eyeLids: this.eyeLids,
+        steadyGaze,
         ringHint,
         badgeRing: restRing,
         top: faceTop,

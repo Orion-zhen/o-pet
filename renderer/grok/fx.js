@@ -205,7 +205,7 @@
   function createParticles({ back, front, idPrefix, getRadius }) {
     let reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     const scale = () => getRadius() / Re0;
-    let spin = 0, sizeScale = 1, wide = false, sustain = false, last = -1;
+    let spin = 0, sizeScale = 1, wide = false, sustain = false, last = -1, pausedAt = null;
     let parts = [];
     const burst = (W = 20, H = 1, G = 0) => {
       if (reduce || !back || parts.length > 120) return;
@@ -445,6 +445,17 @@
 
     return {
       burst,
+      setPaused(value, now = performance.now()) {
+        if (value) {
+          pausedAt = now;
+          return;
+        }
+        if (pausedAt === null) return;
+        const delta = now - pausedAt;
+        for (const pending of spawnQ) pending.at += delta;
+        pausedAt = null;
+        last = now;
+      },
       setReduceMotion(value) {
         reduce = !!value;
         if (reduce) {

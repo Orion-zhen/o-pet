@@ -1,14 +1,16 @@
 /* L4 — playlists, blink, login wrap, springs. Symbols: g1e VBe w_t cSe rnt int ant ont snt. */
 (function (g) {
   const GROUPS = [
-    { label: "Lifecycle", states: ["sleeping", "waking", "idle", "listening", "thinking", "searching", "working"] },
-    { label: "Reactions", states: ["excited", "surprised", "suspicious", "angry", "drowsy", "happy", "winking", "curious", "confused", "bored", "proud", "shy", "sad", "laughing", "scared", "playful", "celebrate"] },
+    { label: "Lifecycle", states: ["sleeping", "dreaming", "waking", "idle", "listening", "thinking", "searching", "working"] },
+    { label: "Reactions", states: ["excited", "surprised", "startled", "suspicious", "angry", "drowsy", "happy", "winking", "curious", "confused", "quizzical", "bored", "proud", "shy", "sad", "laughing", "scared", "playful", "celebrate"] },
     { label: "Agent morphs", states: ["orbit", "radar"] },
+    { label: "Interaction", states: ["stretching", "front"] },
     { label: "Product lifecycle", states: ["spawning", "humming", "loading", "dictating", "writing", "sending", "receiving", "uploading", "notifying", "alerting", "dragging", "bouncing", "powering-down"] },
   ];
 
   const EYE_PLAYLIST = {
-    sleeping: [13, 22, 4], waking: [13], idle: [0, 8], listening: [10, 1, 19],
+    sleeping: [13, 22, 4], dreaming: [13], waking: [13], idle: [0, 8], front: [0, 8],
+    listening: [10, 1, 19], stretching: [4, 0], startled: [3, 21], quizzical: [0, 14],
     thinking: [8, 16, 14, 17, 5], searching: [15, 9, 3, 20, 12, 18],
     working: [7, 16, 11, 10], excited: [2, 17, 21, 3, 11], surprised: [3, 21],
     suspicious: [14, 5, 23], angry: [7, 16], drowsy: [4, 22, 13],
@@ -23,8 +25,10 @@
   };
 
   const EYE_HOLD_MS = {
-    sleeping: [6000, 10000], waking: [800, 800], idle: [9000, 16000],
-    listening: [2800, 5000], thinking: [2000, 3600], searching: [1000, 1800],
+    sleeping: [6000, 10000], dreaming: [8000, 8000], waking: [800, 800],
+    idle: [9000, 16000], front: [8000, 8000], listening: [2800, 5000],
+    stretching: [3500, 3500], startled: [800, 800], quizzical: [2200, 2200],
+    thinking: [2000, 3600], searching: [1000, 1800],
     working: [1800, 3200], excited: [1100, 2000], surprised: [2500, 4000],
     suspicious: [2600, 4500], angry: [2200, 3800], drowsy: [4000, 8000],
     happy: [2500, 4500], winking: [4000, 4000], curious: [1800, 3200], confused: [2200, 3800],
@@ -39,7 +43,8 @@
   };
 
   const BLINK_MS = {
-    sleeping: null, waking: null, idle: [6000, 14000], listening: [3000, 7000],
+    sleeping: null, dreaming: null, waking: null, idle: [6000, 14000], front: [7000, 12_000],
+    listening: [3000, 7000], stretching: null, startled: null, quizzical: null,
     thinking: [3500, 7000], searching: [1600, 4000], working: [2800, 5500],
     excited: [2000, 4000], surprised: [1800, 3500], suspicious: [4500, 8000],
     angry: [3500, 7000], drowsy: null, happy: [2500, 5000], winking: null, curious: [2500, 5500],
@@ -78,8 +83,6 @@
   const POSE = { turn: 17, tilt: -14, roll: 29, scale: 1 };
   const POSE_HOME = { turn: 33, tilt: -19, roll: 38 };
   const UNIFORM_EYES = true;
-  const V_T = new Set(["happy", "excited", "proud"]);
-  const B_T = new Set(["playful"]);
   const WINK_STATES = new Set(["idle", "happy", "excited", "curious", "playful"]);
   const SHAPE_ZOOM = { blob: 0.92, pebble: 0.96, squircle: 0.84, tablet: 1, wedge: 0.94, hex: 0.94, cloud: 1, teardrop: 1 };
   const VIEW_SCALE = 259 / 229;
@@ -125,7 +128,7 @@
     GROUPS, EYE_PLAYLIST, EYE_HOLD_MS, BLINK_MS,
     ONBOARDING, ONBOARDING_MS, onboardMood,
     SPRINGS, FACE_TUNE, POSE, POSE_HOME, UNIFORM_EYES,
-    V_T, B_T, WINK_STATES,
+    WINK_STATES,
     SHAPE_ZOOM, VIEW_SCALE, shapeZoom, poseScale, shapeEyeScale,
     VIEW, VIEW_HALF, VIEW_MID, OVERLAY_ZOOM, overlayViewZoom,
     INK, INK_ANGLE, inkFg, inkCss, EYE_BG,

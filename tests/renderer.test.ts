@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const hostSource = readFileSync(new URL("../renderer/host.js", import.meta.url), "utf8");
 const fxSource = readFileSync(new URL("../renderer/grok/fx.js", import.meta.url), "utf8");
 const geometrySource = readFileSync(new URL("../renderer/grok/geometry-data.js", import.meta.url), "utf8");
+const mathSource = readFileSync(new URL("../renderer/grok/math.js", import.meta.url), "utf8");
+const poseSource = readFileSync(new URL("../renderer/grok/pose.js", import.meta.url), "utf8");
 const tablesSource = readFileSync(new URL("../renderer/grok/tables.js", import.meta.url), "utf8");
 
 type EventListener = (event: RendererEvent) => void;
@@ -108,6 +110,8 @@ interface CharacterScene {
 	expression: string;
 	effect: string | null;
 	gaze: string;
+	direction?: number;
+	variant?: string;
 }
 
 class CharacterStub {
@@ -121,6 +125,8 @@ class CharacterStub {
 	readonly followingPointer: boolean[] = [];
 	colorId: string;
 	destroyed = false;
+	bounceCount = 0;
+	pounceCount = 0;
 	spinCount = 0;
 	winkCount = 0;
 
@@ -149,6 +155,16 @@ class CharacterStub {
 	spinOnce(): void {
 		this.spinCount += 1;
 	}
+
+	bounceOnce(): void {
+		this.bounceCount += 1;
+	}
+
+	pounceOnce(): void {
+		this.pounceCount += 1;
+	}
+
+	setGazeTarget(_target: { x: number; y: number } | null): void {}
 
 	setShape(shape: string): void {
 		this.shapes.push(shape);
@@ -216,13 +232,26 @@ function createHarness(initiallyHidden = false, random = (): number => 0): {
 	clock: ClockStub;
 	document: DocumentStub;
 	drags: DragMessage[];
+	highEnergyAt: number[];
 	motion: MotionQueryStub;
 } {
+	const clock = new ClockStub();
+	const highEnergyAt: number[] = [];
 	const instances: CharacterStub[] = [];
 	class HarnessCharacter extends CharacterStub {
 		constructor(svg: unknown, options: CharacterOptions) {
 			super(svg, options);
 			instances.push(this);
+		}
+
+		override spinOnce(): void {
+			super.spinOnce();
+			highEnergyAt.push(clock.now);
+		}
+
+		override bounceOnce(): void {
+			super.bounceOnce();
+			highEnergyAt.push(clock.now);
 		}
 	}
 	const windowStub: Record<string, unknown> = {
@@ -235,7 +264,6 @@ function createHarness(initiallyHidden = false, random = (): number => 0): {
 	windowStub.window = windowStub;
 	vm.runInNewContext(hostSource, windowStub);
 	const factory = windowStub.OPetRenderer as RendererFactory;
-	const clock = new ClockStub();
 	const document = new DocumentStub();
 	document.hidden = initiallyHidden;
 	const motion = new MotionQueryStub();
@@ -252,7 +280,7 @@ function createHarness(initiallyHidden = false, random = (): number => 0): {
 	});
 	const character = instances[0];
 	if (character === undefined) throw new Error("渲染器未创建角色");
-	return { api, character, clock, document, drags, motion };
+	return { api, character, clock, document, drags, highEnergyAt, motion };
 }
 
 function latest(character: CharacterStub): CharacterScene {
@@ -363,7 +391,10 @@ describe("o-pet Grok 渲染器", () => {
 		};
 
 		const states = tables.GROUPS.flatMap((group) => group.states);
-		expect(states).toHaveLength(39);
+		expect(states).toHaveLength(44);
+		expect(states).toEqual(expect.arrayContaining([
+			"startled", "stretching", "dreaming", "quizzical", "front",
+		]));
 		expect(states).not.toContain("progress");
 		expect(tables.EYE_PLAYLIST.winking).toEqual([1]);
 		expect(tables.BLINK_MS.winking).toBeNull();
@@ -390,6 +421,45 @@ describe("o-pet Grok 渲染器", () => {
 		expect(api.update({ activity })).toBe(true);
 		clock.advance(2000);
 		expect(latest(character)).toMatchObject({ pose, effect });
+	});
+
+	it("空闲片段先转移视线，再让身体跟随", () => {
+		const { character, clock } = createHarness();
+		clock.advance(7000);
+		expect(latest(character)).toMatchObject({
+			pose: "idle",
+			expression: "listening",
+			gaze: "listening",
+		});
+		clock.advance(250);
+		expect(latest(character).pose).toBe("listening");
+	});
+
+	it("最近空闲片段不会短时间重复", () => {
+		const { character, clock } = createHarness();
+		clock.advance(60_000);
+		const storyStarts = character.scenes
+			.filter((value) => value.pose === "idle" && ["listening", "searching", "curious"].includes(value.gaze))
+			.map((value) => value.gaze);
+		expect(storyStarts.slice(0, 3)).toEqual(["listening", "searching", "curious"]);
+	});
+
+	it("空闲阶段边界由每次会话的随机序列决定", () => {
+		const early = createHarness(false, () => 0);
+		const late = createHarness(false, () => 0.999);
+		early.clock.advance(4 * 60_000);
+		late.clock.advance(4 * 60_000);
+		expect(early.character.scenes.some((value) => value.pose === "drowsy")).toBe(true);
+		expect(late.character.scenes.some((value) => value.pose === "drowsy")).toBe(false);
+	});
+
+	it("高能量片段在清醒阶段保持低频", () => {
+		const { clock, highEnergyAt } = createHarness(false, () => 0.999);
+		clock.advance(150_000);
+		expect(highEnergyAt).toHaveLength(2);
+		const [first, second] = highEnergyAt;
+		if (first === undefined || second === undefined) throw new Error("缺少高能量片段时间");
+		expect(second - first).toBeGreaterThanOrEqual(20_000);
 	});
 
 	it("思考几秒后优先进入 humming，随后回到思考", () => {
@@ -541,6 +611,34 @@ describe("o-pet Grok 渲染器", () => {
 		expect(character.paused).toEqual([true, false]);
 	});
 
+	it("隐藏期间不推进空闲阶段", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(2000);
+		document.hidden = true;
+		document.dispatch("visibilitychange");
+		clock.advance(4 * 60_000);
+		document.hidden = false;
+		document.dispatch("visibilitychange");
+		expect(latest(character).pose).toBe("idle");
+		clock.advance(4 * 60_000 - 2000 + 10_000);
+		expect(latest(character).pose).toBe("drowsy");
+	});
+
+	it("隐藏期间收到的新活动从页面恢复时开始计时", () => {
+		const { api, character, clock, document } = createHarness();
+		clock.advance(2000);
+		document.hidden = true;
+		document.dispatch("visibilitychange");
+		clock.advance(10 * 60_000);
+		api.update({ activity: "thinking" });
+		clock.advance(5 * 60_000);
+		document.hidden = false;
+		document.dispatch("visibilitychange");
+		clock.advance(350);
+		expect(latest(character).pose).toBe("thinking");
+		expect(character.scenes.map((value) => value.pose)).not.toContain("waking");
+	});
+
 	it("应用受支持的身形、配色和动态偏好", () => {
 		const { api, character, motion } = createHarness();
 		expect(api.setPreferences({
@@ -587,6 +685,210 @@ describe("o-pet Grok 渲染器", () => {
 		expect(document.body.classes.has("dragging")).toBe(false);
 	});
 
+	it("鼠标进入后先追踪鼠标，再回正看向用户", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(2000);
+		document.body.dispatch("pointerenter");
+		expect(latest(character)).toMatchObject({ pose: "curious", gaze: "curious" });
+		clock.advance(500);
+		expect(latest(character)).toMatchObject({ pose: "listening", gaze: "front" });
+	});
+
+	it("困倦阶段仍会播放片段并回到 drowsy", () => {
+		const { character, clock } = createHarness();
+		clock.advance(4 * 60_000);
+		expect(latest(character).pose).toBe("drowsy");
+		const sceneCount = character.scenes.length;
+		clock.advance(30_000);
+		expect(character.scenes.length).toBeGreaterThan(sceneCount);
+		expect(latest(character).pose).toBe("drowsy");
+	});
+
+	it("睡眠阶段轮换梦境变体并在片段之间回到 sleeping", () => {
+		const { character, clock } = createHarness();
+		clock.advance(10 * 60_000 + 18_000);
+		const first = latest(character).variant;
+		expect(first).toBe("float");
+		clock.advance(6000);
+		expect(latest(character).pose).toBe("sleeping");
+		clock.advance(18_000);
+		const second = latest(character).variant;
+		expect(second).toBe("curl");
+		expect(second).not.toBe(first);
+		clock.advance(6000 + 18_000);
+		expect(latest(character).variant).toBe("twitch");
+	});
+
+	it("睡眠阶段进入梦境，Agent 活动按保存的睡眠深度先唤醒", () => {
+		const { api, character, clock } = createHarness();
+		clock.advance(10 * 60_000 + 18_000);
+		expect(latest(character)).toMatchObject({
+			pose: "dreaming",
+			expression: "sleeping",
+			gaze: "sleeping",
+		});
+		expect(["float", "curl", "twitch"]).toContain(latest(character).variant);
+
+		api.update({ activity: "thinking" });
+		clock.advance(350);
+		expect(latest(character).pose).toBe("waking");
+		clock.advance(1800);
+		expect(latest(character).pose).toBe("thinking");
+	});
+
+	it("困倦片段被 Agent 打断时不依赖当前画面判断唤醒", () => {
+		const { api, character, clock } = createHarness();
+		clock.advance(4 * 60_000 + 12_200);
+		expect(latest(character).pose).toBe("surprised");
+		api.update({ activity: "thinking" });
+		clock.advance(350);
+		expect(latest(character).pose).toBe("waking");
+	});
+
+	it("困倦拖动结束后面向用户询问，再回到 drowsy", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(4 * 60_000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 7, clientX: 20, clientY: 30 });
+		expect(latest(character).pose).toBe("dragging");
+		document.body.dispatch("pointerup", { pointerId: 7 });
+		expect(latest(character)).toMatchObject({
+			pose: "quizzical",
+			expression: "quizzical",
+			gaze: "front",
+		});
+		expect(latest(character).pose).not.toBe("confused");
+		clock.advance(2200);
+		expect(latest(character).pose).toBe("drowsy");
+	});
+
+	it("quizzical 连续选择相反方向且始终使用 front 视线", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(2000);
+		const directions: Array<number | undefined> = [];
+		for (const pointerId of [20, 21]) {
+			document.body.dispatch("pointerdown", { button: 0, pointerId, clientX: 20, clientY: 30 });
+			document.body.dispatch("pointerup", { pointerId });
+			directions.push(latest(character).direction);
+			expect(latest(character).gaze).toBe("front");
+			clock.advance(2200);
+		}
+		const [first, second] = directions;
+		if (first === undefined || second === undefined) throw new Error("缺少询问方向");
+		expect(first).toBe(-second);
+	});
+
+	it("睡眠时立即开始原生拖动，并在惊醒后显示 dragging", () => {
+		const { character, clock, document, drags } = createHarness();
+		clock.advance(10 * 60_000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 8, clientX: 20, clientY: 30 });
+		expect(drags).toEqual([{ phase: "start" }]);
+		expect(latest(character).pose).toBe("startled");
+		clock.advance(650);
+		expect(latest(character).pose).toBe("dragging");
+		document.body.dispatch("pointerup", { pointerId: 8 });
+		expect(latest(character)).toMatchObject({ pose: "quizzical", gaze: "front" });
+	});
+
+	it("单次睡眠打断暂时回到 drowsy，随后快速入睡", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(10 * 60_000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 22, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointerup", { pointerId: 22 });
+		clock.advance(650 + 2200);
+		expect(latest(character).pose).toBe("drowsy");
+		clock.advance(19_999);
+		expect(latest(character).pose).toBe("drowsy");
+		clock.advance(1);
+		expect(latest(character).pose).toBe("sleeping");
+	});
+
+	it("页面隐藏和减少动态模式不改变惊醒交互顺序", () => {
+		const { api, character, clock, document } = createHarness();
+		api.setPreferences({ reduceMotion: true });
+		clock.advance(10 * 60_000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 23, clientX: 20, clientY: 30 });
+		clock.advance(100);
+		document.hidden = true;
+		document.dispatch("visibilitychange");
+		clock.advance(10_000);
+		expect(latest(character).pose).toBe("startled");
+		document.hidden = false;
+		document.dispatch("visibilitychange");
+		clock.advance(550);
+		expect(latest(character).pose).toBe("dragging");
+	});
+
+	it("睡眠时快速松开会跳过 dragging", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(10 * 60_000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 9, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointerup", { pointerId: 9 });
+		clock.advance(649);
+		expect(latest(character).pose).toBe("startled");
+		clock.advance(1);
+		expect(latest(character).pose).toBe("quizzical");
+		expect(character.scenes.slice(-2).map((scene) => scene.pose)).toEqual(["startled", "quizzical"]);
+	});
+
+	it("连续戳弄后伸展并重置睡眠进程", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(10 * 60_000);
+		for (const pointerId of [10, 11, 12]) {
+			document.body.dispatch("pointerdown", { button: 0, pointerId, clientX: 20, clientY: 30 });
+			document.body.dispatch("pointerup", { pointerId });
+			clock.advance(pointerId === 10 ? 650 + 2200 : 2200);
+		}
+		expect(latest(character).pose).toBe("stretching");
+		clock.advance(3500 + 700 + 900);
+		expect(latest(character).pose).toBe("idle");
+		clock.advance(60_000);
+		expect(latest(character).pose).not.toBe("drowsy");
+	});
+
+	it("Agent 活动期间拖动结束后直接恢复活动", () => {
+		const { api, character, clock, document } = createHarness();
+		api.update({ activity: "thinking" });
+		clock.advance(2000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 13, clientX: 20, clientY: 30 });
+		expect(latest(character).pose).toBe("dragging");
+		document.body.dispatch("pointerup", { pointerId: 13 });
+		expect(latest(character).pose).toBe("thinking");
+		expect(character.scenes.slice(-2).map((scene) => scene.pose)).toEqual(["dragging", "thinking"]);
+	});
+
+	it("角色姿态为 front 和减少动态提供独立视觉语义", () => {
+		const windowStub: Record<string, unknown> = {};
+		windowStub.window = windowStub;
+		const deterministicMath = Object.create(Math) as Math;
+		deterministicMath.random = () => 0.5;
+		vm.runInNewContext(mathSource, { Math: deterministicMath, window: windowStub });
+		vm.runInNewContext(tablesSource, { Math: deterministicMath, window: windowStub });
+		vm.runInNewContext(poseSource, { Math: deterministicMath, window: windowStub });
+		const pose = windowStub.GROK_POSE as {
+			applyPose(
+				state: string,
+				mt: number,
+				dtState: number,
+				now: number,
+				context: Record<string, unknown>,
+				extra: Record<string, unknown>,
+			): { faceRoll: number; spin: number; tx: number };
+			nextGaze(state: string): { x: number; y: number };
+		};
+		const context = { quizzicalBlinked: false, wantBlink: false };
+		const moving = pose.applyPose("quizzical", 1, 0.9, 900, context, { direction: 1 });
+		expect(moving.spin).not.toBe(0);
+		expect(moving.faceRoll).not.toBe(0);
+		const reduced = pose.applyPose("quizzical", 1, 0.9, 900, context, {
+			direction: 1,
+			reduceMotion: true,
+		});
+		expect(reduced.spin).toBe(0);
+		expect(reduced.tx).toBe(0);
+		expect(reduced.faceRoll).not.toBe(0);
+		expect(pose.nextGaze("front")).toMatchObject({ x: 0, y: 0 });
+	});
+
 	it("销毁时释放监听、计时器和角色", () => {
 		const { api, character, clock, document, motion } = createHarness();
 		api.destroy();
@@ -596,6 +898,7 @@ describe("o-pet Grok 渲染器", () => {
 		expect(document.listeners.get("visibilitychange")?.size).toBe(0);
 		expect(motion.listeners.get("change")?.size).toBe(0);
 		expect(document.body.listeners.get("lostpointercapture")?.size).toBe(0);
+		expect(document.body.listeners.get("pointerenter")?.size).toBe(0);
 		expect(api.update({ activity: "thinking" })).toBe(false);
 	});
 });

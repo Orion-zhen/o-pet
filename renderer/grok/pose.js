@@ -7,6 +7,8 @@
     const pt = 0;
     let lid = 1;
     let eyeBoost = 1;
+    let faceRoll = 0;
+    let eyeLids = null;
     let spin = pt, tx = 0, ty = 0, squash = 1;
 
     switch (state) {
@@ -17,6 +19,15 @@
         tx = -2 * En;
         ty = 8 * En + Math.sin(mt * 0.55) * 3 - Zt * 5;
         squash = 1 + Math.sin(mt * 0.55) * 0.016 + Zt * 0.05;
+        if (now >= ctx.sleepTwitchAt) {
+          ctx.sleepTwitchEnd = now + 420;
+          ctx.sleepTwitchAt = now + rand(18_000, 34_000);
+        }
+        if (now < ctx.sleepTwitchEnd && !extra.reduceMotion) {
+          const twitch = 1 - (ctx.sleepTwitchEnd - now) / 420;
+          ty -= Math.sin(twitch * Math.PI) * 2.5;
+          spin += Math.sin(twitch * Math.PI * 2) * 1.8;
+        }
         if (EYE_PLAYLIST.sleeping.includes(extra.eyeTo)) {
           lid = extra.eyeMorphX > 0.85 ? 1 : 0.08;
         } else if (dtState < 1.2) {
@@ -25,6 +36,31 @@
         } else {
           lid = 0.08;
           if (extra.blinkX < 0.18) ctx.forceSleepEye = true;
+        }
+        break;
+      }
+      case "dreaming": {
+        const variant = extra.variant || "float";
+        const breath = Math.sin(mt * 0.48);
+        spin = pt + 4 + Math.sin(mt * 0.22) * 1.4;
+        ty = 8 + breath * 2;
+        squash = 1 + breath * 0.014;
+        lid = 0.06;
+        if (!extra.reduceMotion) {
+          if (variant === "float") {
+            const drift = Math.sin(clamp(dtState / 8, 0, 1) * Math.PI);
+            ty -= drift * 7;
+            squash += drift * 0.018;
+          } else if (variant === "curl") {
+            const settle = K2(clamp(dtState / 2.2, 0, 1));
+            spin += (extra.direction || 1) * settle * 5;
+            tx += (extra.direction || 1) * settle * 4;
+            squash -= settle * 0.018;
+          } else if (variant === "twitch" && dtState > 3.2 && dtState < 3.75) {
+            const twitch = (dtState - 3.2) / 0.55;
+            ty -= Math.sin(twitch * Math.PI) * 5;
+            spin += Math.sin(twitch * Math.PI * 2) * 2;
+          }
         }
         break;
       }
@@ -54,12 +90,25 @@
         }
         break;
       }
-      case "idle":
-        spin = pt + Math.sin(mt * 0.5) * 1.5 + Math.sin(mt * 0.17) * 0.6;
-        tx = Math.sin(mt * 0.27) * 1;
-        ty = Math.sin(mt * 0.85) * 1.2;
-        squash = 1 + Math.sin(mt * 0.85) * 0.007;
+      case "idle": {
+        if (now >= ctx.idleShiftAt) {
+          ctx.idleShiftDirection = sign();
+          ctx.idleShiftDuration = rand(900, 1700);
+          ctx.idleShiftEnd = now + ctx.idleShiftDuration;
+          ctx.idleShiftAt = now + rand(7000, 15_000);
+        }
+        const breathing = Math.sin(mt * 0.78 + Math.sin(mt * 0.09) * 0.45);
+        let shift = 0;
+        if (now < ctx.idleShiftEnd) {
+          const elapsed = 1 - (ctx.idleShiftEnd - now) / ctx.idleShiftDuration;
+          shift = Math.sin(clamp(elapsed, 0, 1) * Math.PI) * ctx.idleShiftDirection;
+        }
+        spin = pt + Math.sin(mt * 0.31) * 0.8 + shift * 1.8;
+        tx = Math.sin(mt * 0.19) * 0.7 + shift * 2.2;
+        ty = breathing * 1.1;
+        squash = 1 + breathing * (0.006 + 0.002 * Math.sin(mt * 0.07));
         break;
+      }
       case "listening":
         spin = pt + 8 + Math.sin(mt * 0.5) * 1.5;
         tx = 2;
@@ -150,6 +199,91 @@
         ty = 3.5;
         squash = 0.975;
         break;
+      case "startled": {
+        const direction = extra.direction || 1;
+        const t = clamp(dtState / 0.65, 0, 1);
+        eyeBoost = 1.2 - t * 0.08;
+        if (extra.reduceMotion) break;
+        if (t < 0.16) {
+          const k = K2(t / 0.16);
+          tx = direction * 10 * k;
+          ty = 4 * k;
+          spin = direction * 5 * k;
+          squash = 1 - 0.12 * k;
+        } else if (t < 0.48) {
+          const k = K2((t - 0.16) / 0.32);
+          tx = direction * (10 - 13 * k);
+          ty = 4 - 8 * k;
+          spin = direction * (5 - 7 * k);
+          squash = 0.88 + 0.18 * k;
+        } else {
+          const k = (t - 0.48) / 0.52;
+          const settle = 1 - k;
+          tx = direction * Math.sin(k * Math.PI * 3) * 2.5 * settle;
+          ty = -4 * settle;
+          spin = direction * Math.sin(k * Math.PI * 3) * 1.5 * settle;
+          squash = 1 + Math.sin(k * Math.PI * 2) * 0.025 * settle;
+        }
+        break;
+      }
+      case "stretching": {
+        const direction = extra.direction || 1;
+        if (dtState < 0.45) {
+          const k = K2(dtState / 0.45);
+          ty = 5 * k;
+          squash = 1 - 0.055 * k;
+          lid = 1 - 0.5 * k;
+        } else if (dtState < 2.35) {
+          const k = K2((dtState - 0.45) / 1.9);
+          ty = 5 - 9 * k;
+          spin = direction * 8 * k;
+          squash = 0.945 + 0.16 * k;
+          lid = 0.5 + 0.15 * k;
+        } else if (dtState < 2.75) {
+          const k = (dtState - 2.35) / 0.4;
+          ty = -4;
+          spin = direction * (8 + Math.sin(k * Math.PI * 6) * (extra.reduceMotion ? 0 : 0.7));
+          squash = 1.105;
+          lid = 0.65;
+        } else {
+          const k = K2(clamp((dtState - 2.75) / 0.75, 0, 1));
+          ty = -4 * (1 - k);
+          spin = direction * 8 * (1 - k);
+          squash = 1.105 - 0.105 * k;
+          lid = 0.65 + 0.35 * k;
+          if (k > 0.42 && !ctx.stretchBlinked) {
+            ctx.stretchBlinked = true;
+            ctx.wantBlink = true;
+          }
+        }
+        if (extra.reduceMotion) {
+          spin = 0;
+          ty = 0;
+          squash = 1;
+        }
+        break;
+      }
+      case "quizzical": {
+        const direction = extra.direction || 1;
+        let amount;
+        if (dtState < 0.15) amount = -0.2 * (1 - dtState / 0.15);
+        else if (dtState < 0.55) amount = K2((dtState - 0.15) / 0.4);
+        else if (dtState < 1.45) amount = 1 + 0.2 * K2((dtState - 0.55) / 0.9);
+        else amount = 1.2 * (1 - K2(clamp((dtState - 1.45) / 0.75, 0, 1)));
+        const bodyAngle = (extra.reduceMotion ? 0 : 7.5) * amount;
+        const faceAngle = 12 * amount;
+        spin = direction * bodyAngle;
+        faceRoll = direction * (faceAngle - bodyAngle);
+        tx = extra.reduceMotion ? 0 : direction * 1.5 * amount;
+        ty = extra.reduceMotion ? 0 : 1.5 * amount;
+        eyeBoost = 1.04;
+        eyeLids = direction > 0 ? [1, 0.82] : [0.82, 1];
+        if (dtState > 1.75 && !ctx.quizzicalBlinked) {
+          ctx.quizzicalBlinked = true;
+          ctx.wantBlink = true;
+        }
+        break;
+      }
       case "drowsy": {
         spin = pt + Math.sin(mt * 0.32) * 2.5;
         tx = Math.sin(mt * 0.2) * 1.5;
@@ -181,7 +315,7 @@
             if (bn > 0.32 && bn < 0.46) lid = 0.05;
           } else {
             ctx.slumpAt = 0;
-            ctx.nodUntil = now + rand(1500, 3500);
+            ctx.nodUntil = now + rand(12_000, 24_000);
           }
         }
         break;
@@ -351,19 +485,27 @@
         squash = 1;
         break;
     }
-    return { spin, tx, ty, squash, lid, eyeBoost };
+    return { spin, tx, ty, squash, lid, eyeBoost, faceRoll, eyeLids };
   }
 
-  function nextGaze(state) {
+  function nextGaze(state, direction = 0) {
+    const side = direction || sign();
     switch (state) {
-      case "idle":
-        return { x: 0, y: 0, hold: [2500, 5500] };
+      case "front":
+      case "sleeping":
+      case "dreaming":
+        return { x: 0, y: 0, hold: [5000, 8000] };
+      case "idle": {
+        const look = Math.random();
+        if (look < 0.55) return { x: 0, y: 0, hold: [3000, 6000] };
+        return { x: side * rand(0.35, 0.75) * 15, y: rand(-0.25, 0.35) * 9, hold: [1800, 3600] };
+      }
       case "listening":
-        return { x: rand(-0.3, 0.3) * 15, y: rand(-0.25, 0.25) * 9, hold: [2200, 4200] };
+        return { x: direction ? direction * 0.65 * 15 : rand(-0.3, 0.3) * 15, y: rand(-0.25, 0.25) * 9, hold: [2200, 4200] };
       case "thinking":
         return { x: sign() * rand(0.5, 1) * 15, y: -rand(0.4, 1) * 9, hold: [1500, 2800] };
       case "searching":
-        return { x: sign() * rand(0.7, 1) * 15, y: rand(-1, 1) * 9, hold: [550, 1150] };
+        return { x: side * rand(0.7, 1) * 15, y: rand(-1, 1) * 9, hold: [550, 1150] };
       case "working":
         return { x: rand(-0.4, 0.4) * 15, y: rand(0.4, 1) * 9, hold: [1200, 2400] };
       case "excited":
@@ -379,7 +521,7 @@
       case "happy":
         return { x: rand(-0.7, 0.7) * 15, y: -rand(0, 0.6) * 9, hold: [1800, 3400] };
       case "curious":
-        return { x: sign() * rand(0.6, 1) * 15, y: rand(-1, 1) * 9, hold: [950, 1900] };
+        return { x: side * rand(0.6, 1) * 15, y: rand(-1, 1) * 9, hold: [950, 1900] };
       case "confused":
         return { x: sign() * rand(0.5, 1) * 15, y: rand(-0.6, 1) * 9, hold: [1100, 2300] };
       case "bored":
