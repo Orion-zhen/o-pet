@@ -3,9 +3,25 @@ name = "o-pet"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-only"
-description = "Cross-platform desktop pet for Pi"
+description = "Cross-platform desktop pet for O-Pi"
 repository = "https://github.com/Orion-zhen/o-pet"
 readme = "README.md"
+
+[package.metadata.packager]
+product-name = "o-pet"
+identifier = "com.orion.o-pet"
+before-packaging-command = "cargo build --release"
+out-dir = "dist"
+icons = ["assets/app-icon.icns", "assets/app-icon.ico"]
+category = "Utility"
+publisher = "Orion"
+license-file = "LICENSE"
+
+[package.metadata.packager.macos]
+background-app = true
+
+[package.metadata.packager.nsis]
+installer-icon = "assets/app-icon.ico"
 
 [dependencies]
 async-channel = "*"
@@ -32,6 +48,9 @@ wry = { version = "*", default-features = false }
 objc2 = "*"
 objc2-app-kit = { version = "*", default-features = false, features = ["std", "NSColor", "NSWindow"] }
 objc2-foundation = { version = "*", default-features = false, features = ["std"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "*"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { package = "gtk4", version = "*", features = ["v4_10"] }

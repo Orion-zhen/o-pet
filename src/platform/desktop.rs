@@ -172,12 +172,14 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
+                ..
             } if window_id == window.id() => {
                 *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Moved(_) | WindowEvent::Resized(_),
+                ..
             } if window_id == window.id() => {
                 update_and_save_placement(&window, target, &mut placement, &store);
             }
@@ -188,6 +190,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
                         scale_factor,
                         new_inner_size,
                     },
+                ..
             } if window_id == window.id() => {
                 *new_inner_size =
                     LogicalSize::new(f64::from(placement.width), f64::from(placement.height))

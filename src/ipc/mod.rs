@@ -77,14 +77,24 @@ impl Drop for Server {
 
 fn create_listener(endpoint: &Path) -> io::Result<interprocess::local_socket::Listener> {
     let name = endpoint.as_os_str().to_fs_name::<GenericFilePath>()?;
-    match listener_options(name)?.create_sync() {
-        Ok(listener) => Ok(listener),
+    let listener = match listener_options(name)?.create_sync() {
+        Ok(listener) => listener,
         #[cfg(unix)]
         Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
-            reclaim_stale_socket(endpoint, error)
+            reclaim_stale_socket(endpoint, error)?
         }
-        Err(error) => Err(error),
-    }
+        Err(error) => return Err(error),
+    };
+    #[cfg(unix)]
+    secure_socket_permissions(endpoint)?;
+    Ok(listener)
+}
+
+#[cfg(unix)]
+fn secure_socket_permissions(endpoint: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(endpoint, fs::Permissions::from_mode(0o600))
 }
 
 fn listener_options(name: interprocess::local_socket::Name<'_>) -> io::Result<ListenerOptions<'_>> {
@@ -96,10 +106,15 @@ fn listener_options(name: interprocess::local_socket::Name<'_>) -> io::Result<Li
     platform_listener_options(options)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn platform_listener_options(options: ListenerOptions<'_>) -> io::Result<ListenerOptions<'_>> {
     use interprocess::os::unix::local_socket::ListenerOptionsExt;
     Ok(options.mode(0o600))
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn platform_listener_options(options: ListenerOptions<'_>) -> io::Result<ListenerOptions<'_>> {
+    Ok(options)
 }
 
 #[cfg(windows)]

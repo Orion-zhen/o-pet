@@ -27,6 +27,24 @@ npm run renderer:test
 cargo run --release
 ```
 
+## 应用打包
+
+在 macOS 或 Windows 上安装仓库使用的 `cargo-packager` 版本：
+
+```bash
+cargo install cargo-packager --version 0.11.8 --locked
+```
+
+在目标平台执行发布打包：
+
+```bash
+cargo packager --release
+```
+
+macOS 默认生成 `.app` 和 `.dmg`，Windows 默认生成 NSIS `.exe` 安装程序。产物位于 `dist/`。应用包和 Windows 可执行文件均使用 `assets/app-icon-256.png` 对应的平台图标。
+
+默认产物未签名。对外分发前，需要在对应平台配置代码签名，并在 macOS 上完成公证。
+
 ## 配置
 
 Linux、macOS 和 Windows 均读取 `~/.config/o-pet/config.toml`。配置文件不存在时使用默认值。
