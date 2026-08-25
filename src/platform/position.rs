@@ -7,10 +7,9 @@ use std::{
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+use crate::config::{MAX_SIZE, MIN_SIZE};
+
 pub(super) const DEFAULT_MARGIN: i32 = 32;
-pub(super) const DEFAULT_SIZE: i32 = 240;
-const MAX_SIZE: i32 = 1024;
-const MIN_SIZE: i32 = 64;
 
 #[cfg(any(test, target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -42,10 +41,10 @@ pub(super) struct WindowPlacement {
 }
 
 impl WindowPlacement {
-    pub fn default_for(monitor: String) -> Self {
+    pub fn default_for(monitor: String, size: i32) -> Self {
         Self {
-            width: DEFAULT_SIZE,
-            height: DEFAULT_SIZE,
+            width: size,
+            height: size,
             monitor,
             right: DEFAULT_MARGIN,
             bottom: DEFAULT_MARGIN,
@@ -229,7 +228,8 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_MARGIN, DEFAULT_SIZE, MonitorGeometry, PlacementStore, WindowPlacement};
+    use super::{DEFAULT_MARGIN, MonitorGeometry, PlacementStore, WindowPlacement};
+    use crate::config::DEFAULT_SIZE;
 
     #[test]
     fn placement_is_saved_and_loaded_atomically() {
@@ -254,8 +254,8 @@ mod tests {
     fn repeated_saves_replace_the_previous_placement() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let store = PlacementStore::at(directory.path().join("window.json"));
-        let first = WindowPlacement::default_for("first".into());
-        let second = WindowPlacement::default_for("second".into());
+        let first = WindowPlacement::default_for("first".into(), DEFAULT_SIZE);
+        let second = WindowPlacement::default_for("second".into(), DEFAULT_SIZE);
 
         store.save(&first).expect("save first placement");
         store.save(&second).expect("replace placement");
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn clamps_offsets_without_changing_logical_size() {
-        let mut placement = WindowPlacement::default_for("DP-1".into());
+        let mut placement = WindowPlacement::default_for("DP-1".into(), DEFAULT_SIZE);
         placement.right = 2_000;
         placement.bottom = 2_000;
         placement.clamp_to(1920, 1080);
@@ -291,7 +291,7 @@ mod tests {
         assert_eq!(placement.right, 1920 - DEFAULT_SIZE);
         assert_eq!(placement.bottom, 1080 - DEFAULT_SIZE);
 
-        let small = WindowPlacement::default_for("DP-1".into());
+        let small = WindowPlacement::default_for("DP-1".into(), DEFAULT_SIZE);
         assert_eq!(small.right, DEFAULT_MARGIN);
         assert_eq!(small.bottom, DEFAULT_MARGIN);
     }
@@ -316,7 +316,7 @@ mod tests {
         let origin = placement.physical_origin(monitor);
         assert_eq!(origin, (-560, 1172));
 
-        let mut restored = WindowPlacement::default_for("display-1".into());
+        let mut restored = WindowPlacement::default_for("display-1".into(), DEFAULT_SIZE);
         restored.width = placement.width;
         restored.height = placement.height;
         restored.update_from_physical("display-2".into(), monitor, origin.0, origin.1, 480, 400);
@@ -332,7 +332,7 @@ mod tests {
             height: 1080,
             scale_factor: 1.0,
         };
-        let mut placement = WindowPlacement::default_for("display-1".into());
+        let mut placement = WindowPlacement::default_for("display-1".into(), DEFAULT_SIZE);
 
         placement.update_from_physical("display-2".into(), monitor, 3700, 900, 240, 240);
 

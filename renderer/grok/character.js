@@ -774,7 +774,6 @@
         sizeScale: this.partScale,
         wideStyle: this.trick?.kind === "spinWild" || this.wildWide || humming,
         sustainBelts: humming || loading,
-        preserveBelts: loading,
       });
 
       this._updatePointer(now);

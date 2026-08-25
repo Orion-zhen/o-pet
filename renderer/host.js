@@ -553,6 +553,12 @@
       if (typeof preferences.color === "string" && hasOwn(g.GROK_GEO.palette, preferences.color)) {
         character.setColor(preferences.color);
       }
+      if (typeof preferences.body_color === "string") {
+        character.setInk(preferences.body_color);
+      }
+      if (typeof preferences.eye_color === "string") {
+        character.setEyeColor(preferences.eye_color);
+      }
       if (preferences.scheme === "light" || preferences.scheme === "dark") {
         character.setColor(character.colorId, preferences.scheme);
       }

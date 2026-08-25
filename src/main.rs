@@ -1,3 +1,4 @@
+mod config;
 mod platform;
 mod renderer;
 

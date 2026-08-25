@@ -4,6 +4,8 @@ use o_pet::{
     coordinator::{Activity, AnimationUpdate},
     ipc,
 };
+
+use crate::config::{Config, RendererPreferences};
 use serde::Deserialize;
 use tao::{
     dpi::{LogicalSize, PhysicalPosition},
@@ -62,6 +64,12 @@ struct MonitorChoice {
 }
 
 pub(super) fn run() -> Result<(), Box<dyn Error>> {
+    let config = Config::load().map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("无法读取 ~/.config/o-pet/config.toml: {error}"),
+        )
+    })?;
     let endpoint = ipc::resolve_endpoint().map_err(|error| {
         io::Error::new(error.kind(), format!("无法确定 o-pet IPC 端点: {error}"))
     })?;
@@ -75,13 +83,13 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
     let monitors = available_monitors(&event_loop)?;
     let primary = primary_monitor(&event_loop, &monitors)?;
     let store = PlacementStore::for_application()?;
-    let mut placement = load_placement(&store, primary);
+    let mut placement = load_placement(&store, primary, config.size);
     let selected = monitors
         .iter()
         .find(|monitor| monitor.id == placement.monitor)
         .unwrap_or(primary);
     if selected.id != placement.monitor {
-        placement = WindowPlacement::default_for(selected.id.clone());
+        placement = WindowPlacement::default_for(selected.id.clone(), config.size);
     }
     let (monitor_width, monitor_height) = selected.geometry.logical_size();
     placement.clamp_to(monitor_width, monitor_height);
@@ -133,6 +141,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
         .build(&window)?;
     window.set_visible(true);
 
+    let preferences = config.renderer;
     let mut latest_update = AnimationUpdate::steady(Activity::Idle);
     let mut page_ready = false;
     let mut server = Some(server);
@@ -147,6 +156,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
             }
             Event::UserEvent(UserEvent::Page(PageMessage::Ready)) => {
                 page_ready = true;
+                send_preferences(&webview, &preferences);
                 send_update(&webview, latest_update);
             }
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
@@ -238,13 +248,21 @@ fn monitor_geometry(monitor: &MonitorHandle) -> Result<MonitorGeometry, Box<dyn 
     })
 }
 
-fn load_placement(store: &PlacementStore, primary: &MonitorChoice) -> WindowPlacement {
+fn load_placement(
+    store: &PlacementStore,
+    primary: &MonitorChoice,
+    configured_size: i32,
+) -> WindowPlacement {
     match store.load() {
-        Ok(Some(placement)) => placement,
-        Ok(None) => WindowPlacement::default_for(primary.id.clone()),
+        Ok(Some(mut placement)) => {
+            placement.width = configured_size;
+            placement.height = configured_size;
+            placement
+        }
+        Ok(None) => WindowPlacement::default_for(primary.id.clone(), configured_size),
         Err(error) => {
             eprintln!("无法读取 o-pet 窗口位置，将使用默认位置: {error}");
-            WindowPlacement::default_for(primary.id.clone())
+            WindowPlacement::default_for(primary.id.clone(), configured_size)
         }
     }
 }
@@ -304,7 +322,8 @@ fn reset_to_primary(
         .primary_monitor()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "没有可用的显示器"))?;
     let geometry = monitor_geometry(&monitor)?;
-    *placement = WindowPlacement::default_for(native::monitor_id(&monitor));
+    let configured_size = placement.width;
+    *placement = WindowPlacement::default_for(native::monitor_id(&monitor), configured_size);
     let (monitor_width, monitor_height) = geometry.logical_size();
     placement.clamp_to(monitor_width, monitor_height);
     let origin = placement.physical_origin(geometry);
@@ -323,6 +342,13 @@ fn endpoint_error(endpoint: &std::path::Path, error: io::Error) -> io::Error {
         )
     } else {
         io::Error::new(error.kind(), format!("无法启动 o-pet IPC 服务: {error}"))
+    }
+}
+
+fn send_preferences(webview: &WebView, preferences: &RendererPreferences) {
+    let payload = serde_json::to_string(preferences).expect("renderer preferences must serialize");
+    if let Err(error) = webview.evaluate_script(&format!("window.oPet.setPreferences({payload})")) {
+        eprintln!("无法向渲染页面发送配置: {error}");
     }
 }
 

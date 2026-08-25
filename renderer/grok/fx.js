@@ -227,7 +227,7 @@
     };
 
     let planes = [], hue0 = 0, beltN = 4, spawnQ = [];
-    let prevSpin = 0, spinVel = 0, seeding = false, cooling = false, preserve = false, trailId = 0;
+    let prevSpin = 0, spinVel = 0, seeding = false, cooling = false, trailId = 0;
     const THRESH = 0.9, HARD = 5;
     const makePlanes = (W = 1) => {
       const H = rand(-0.85, 0.85);
@@ -332,7 +332,7 @@
         j.life += j.life > 0 ? realDt : dt;
         const Z = clamp(j.life / j.max, 0, 1);
         if (j.orbit) {
-          const ce = !spinning || (!preserve && Z > 0.55);
+          const ce = !spinning || Z > 0.55;
           j.ret = clamp(j.ret + (ce ? realDt / 0.5 : -realDt / 0.35), 0, 1);
           if (j.ret >= 1) { j.trailEl?.remove(); j.trailFrontEl?.remove(); j.gradEl?.remove(); continue; }
         } else if (j.life >= j.max) { j.el?.remove(); continue; }
@@ -468,7 +468,7 @@
         const Y = last < 0 ? dt : Math.max((now - last) / 1000, 0);
         last = now;
         sizeScale = G.sizeScale; spin = G.spinAngle; wide = G.wideStyle;
-        sustain = G.sustainBelts === true; preserve = G.preserveBelts === true;
+        sustain = G.sustainBelts === true;
         tickVel(dt); seedBelts(now); step(dt, Y);
       },
       hasLife: () => parts.length > 0 || spawnQ.length > 0,

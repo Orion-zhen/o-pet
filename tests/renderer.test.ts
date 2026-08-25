@@ -3,6 +3,7 @@ import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const hostSource = readFileSync(new URL("../renderer/host.js", import.meta.url), "utf8");
+const fxSource = readFileSync(new URL("../renderer/grok/fx.js", import.meta.url), "utf8");
 const geometrySource = readFileSync(new URL("../renderer/grok/geometry-data.js", import.meta.url), "utf8");
 const tablesSource = readFileSync(new URL("../renderer/grok/tables.js", import.meta.url), "utf8");
 
@@ -113,6 +114,8 @@ class CharacterStub {
 	readonly scenes: CharacterScene[];
 	readonly shapes: string[] = [];
 	readonly colors: Array<[string, string | undefined]> = [];
+	readonly bodyColors: string[] = [];
+	readonly eyeColors: string[] = [];
 	readonly paused: boolean[] = [];
 	readonly reducedMotion: boolean[] = [];
 	readonly followingPointer: boolean[] = [];
@@ -154,6 +157,14 @@ class CharacterStub {
 	setColor(color: string, scheme?: string): void {
 		this.colorId = color;
 		this.colors.push([color, scheme]);
+	}
+
+	setInk(color: string): void {
+		this.bodyColors.push(color);
+	}
+
+	setEyeColor(color: string): void {
+		this.eyeColors.push(color);
 	}
 
 	setFollowPointer(value: boolean): void {
@@ -250,6 +261,90 @@ function latest(character: CharacterStub): CharacterScene {
 	return current;
 }
 
+class SvgElementStub {
+	readonly attributes = new Map<string, string>();
+	readonly children: SvgElementStub[] = [];
+	readonly style: Record<string, string> = {};
+	parent: SvgElementStub | undefined;
+	removed = false;
+
+	constructor(readonly tag: string, private readonly onRemove: (element: SvgElementStub) => void) {}
+
+	appendChild(child: SvgElementStub): SvgElementStub {
+		child.parent = this;
+		this.children.push(child);
+		return child;
+	}
+
+	setAttribute(name: string, value: string): void {
+		this.attributes.set(name, value);
+	}
+
+	getAttribute(name: string): string | null {
+		return this.attributes.get(name) ?? null;
+	}
+
+	removeAttribute(name: string): void {
+		this.attributes.delete(name);
+	}
+
+	remove(): void {
+		if (this.removed) return;
+		this.removed = true;
+		if (this.parent !== undefined) {
+			const index = this.parent.children.indexOf(this);
+			if (index >= 0) this.parent.children.splice(index, 1);
+		}
+		this.onRemove(this);
+	}
+}
+
+interface ParticleController {
+	update(now: number, dt: number, options: {
+		sizeScale: number;
+		spinAngle: number;
+		sustainBelts: boolean;
+		wideStyle: boolean;
+	}): void;
+}
+
+function createParticleHarness(): {
+	elements: SvgElementStub[];
+	particles: ParticleController;
+	removedTrails: () => number;
+} {
+	const elements: SvgElementStub[] = [];
+	let removedTrails = 0;
+	const createElement = (tag: string): SvgElementStub => {
+		const element = new SvgElementStub(tag, (removed) => {
+			if (removed.attributes.has("data-trail")) removedTrails += 1;
+		});
+		elements.push(element);
+		return element;
+	};
+	const back = createElement("g");
+	const front = createElement("g");
+	const windowStub: {
+		GROK_FX?: { createParticles(options: unknown): ParticleController };
+		GROK_GEO: { Re: number };
+	} = { GROK_GEO: { Re: 114.2705 } };
+	const deterministicMath = Object.create(Math) as Math;
+	deterministicMath.random = () => 0.5;
+	vm.runInNewContext(fxSource, {
+		document: { createElementNS: (_namespace: string, tag: string) => createElement(tag) },
+		matchMedia: () => ({ matches: false }),
+		Math: deterministicMath,
+		window: windowStub,
+	});
+	const factory = windowStub.GROK_FX;
+	if (factory === undefined) throw new Error("粒子渲染器未加载");
+	return {
+		elements,
+		particles: factory.createParticles({ back, front, getRadius: () => 52, idPrefix: "test-" }),
+		removedTrails: () => removedTrails,
+	};
+}
+
 describe("o-pet Grok 渲染器", () => {
 	it("内嵌全部眼睛、身形和配色数据", () => {
 		const windowStub: Record<string, unknown> = {};
@@ -334,6 +429,28 @@ describe("o-pet Grok 渲染器", () => {
 		expect(latest(character).effect).toBe("loading");
 		clock.advance(2200);
 		expect(latest(character).effect).toBe("loading");
+	});
+
+	it("长时间 loading 会销毁旧彩带并保持新彩带可见", () => {
+		const { elements, particles, removedTrails } = createParticleHarness();
+		let spinAngle = 0;
+		for (let now = 0; now <= 12_000; now += 16) {
+			const dt = 0.016;
+			spinAngle += (now < 1_000 ? 7 : 3) * dt;
+			particles.update(now, dt, {
+				sizeScale: 1,
+				spinAngle,
+				sustainBelts: true,
+				wideStyle: false,
+			});
+		}
+
+		expect(removedTrails()).toBeGreaterThan(0);
+		expect(elements.some((element) => (
+			element.attributes.has("data-trail")
+			&& !element.removed
+			&& (element.attributes.get("d")?.length ?? 0) > 0
+		))).toBe(true);
 	});
 
 	it("审批只短暂警示，随后安静等待用户", () => {
@@ -427,7 +544,9 @@ describe("o-pet Grok 渲染器", () => {
 	it("应用受支持的身形、配色和动态偏好", () => {
 		const { api, character, motion } = createHarness();
 		expect(api.setPreferences({
+			body_color: "#123456",
 			color: "blue",
+			eye_color: "#abcdef",
 			followPointer: false,
 			reduceMotion: true,
 			scheme: "dark",
@@ -435,6 +554,8 @@ describe("o-pet Grok 渲染器", () => {
 		})).toBe(true);
 		expect(character.shapes).toEqual(["cloud"]);
 		expect(character.colors).toEqual([["blue", undefined], ["blue", "dark"]]);
+		expect(character.bodyColors).toEqual(["#123456"]);
+		expect(character.eyeColors).toEqual(["#abcdef"]);
 		expect(character.followingPointer).toEqual([false]);
 		expect(character.reducedMotion.at(-1)).toBe(true);
 

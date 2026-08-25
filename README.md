@@ -27,6 +27,24 @@ npm run renderer:test
 cargo run --release
 ```
 
+## 配置
+
+Linux、macOS 和 Windows 均读取 `~/.config/o-pet/config.toml`。配置文件不存在时使用默认值。
+
+```toml
+size = 240
+shape = "blob"
+body_color = "#000000"
+eye_color = "#f3efe6"
+```
+
+- `size`：正方形窗口的边长，取值范围为 `64` 到 `1024`。
+- `shape`：桌宠形状。支持 `blob`、`pebble`、`bean`、`egg`、`squircle`、`tablet`、`capsule`、`cylinder`、`hex`、`gem`、`crystal`、`wedge`、`shield`、`dome`、`arch`、`cloud`、`teardrop` 和 `leaf`。
+- `body_color`：身体颜色，支持十六进制、CSS 颜色名、`rgb()` 和 `hsl()` 等 CSS 颜色格式。
+- `eye_color`：眼睛颜色，格式与 `body_color` 相同。
+
+所有字段均可省略。配置格式、字段名或字段值无效时，桌宠会输出错误并终止启动。`size` 会覆盖内部保存的窗口尺寸，但不会清除已保存的显示器和窗口位置。
+
 ## IPC 协议
 
 客户端通过本地端点向桌宠发送 JSON Lines。每条消息必须以换行符结束。

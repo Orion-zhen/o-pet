@@ -16,6 +16,12 @@ target
 node_modules/
 coverage/
 *.tsbuildinfo
+Cargo.lock
+package-lock.json
+
+# makepkg 生成内容
+.makepkg/
+*.pkg.tar*
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

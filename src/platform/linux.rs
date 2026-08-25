@@ -13,6 +13,8 @@ use o_pet::{
 };
 use serde::Deserialize;
 use webkit6::prelude::{PolicyDecisionExt, WebViewExt};
+
+use crate::config::{Config, RendererPreferences};
 use webkit6::{
     LoadEvent, NavigationPolicyDecision, PolicyDecisionType, UserContentInjectedFrames,
     UserContentManager, UserScript, UserScriptInjectionTime, WebView,
@@ -78,6 +80,13 @@ struct MonitorChoice {
 }
 
 pub(crate) fn run() -> gtk::glib::ExitCode {
+    let config = match Config::load() {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("无法读取 ~/.config/o-pet/config.toml: {error}");
+            return 1.into();
+        }
+    };
     let endpoint = match ipc::resolve_endpoint() {
         Ok(endpoint) => endpoint,
         Err(error) => {
@@ -120,7 +129,7 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
             application.quit();
             return;
         }
-        if let Err(error) = build_window(application, receiver.clone()) {
+        if let Err(error) = build_window(application, receiver.clone(), &config) {
             eprintln!("无法创建 o-pet Linux 窗口: {error}");
             failed.set(true);
             application.quit();
@@ -138,6 +147,7 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
 fn build_window(
     application: &gtk::Application,
     updates: async_channel::Receiver<AnimationUpdate>,
+    config: &Config,
 ) -> io::Result<()> {
     let display = gdk::Display::default()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "没有可用的 GDK display"))?;
@@ -148,11 +158,15 @@ fn build_window(
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "没有可用的显示器"))?;
     let store = Rc::new(PlacementStore::for_application()?);
     let mut placement = match store.load() {
-        Ok(Some(placement)) => placement,
-        Ok(None) => WindowPlacement::default_for(primary.id.clone()),
+        Ok(Some(mut placement)) => {
+            placement.width = config.size;
+            placement.height = config.size;
+            placement
+        }
+        Ok(None) => WindowPlacement::default_for(primary.id.clone(), config.size),
         Err(error) => {
             eprintln!("无法读取 o-pet 窗口位置，将使用默认位置: {error}");
-            WindowPlacement::default_for(primary.id.clone())
+            WindowPlacement::default_for(primary.id.clone(), config.size)
         }
     };
     let selected = monitors
@@ -160,7 +174,7 @@ fn build_window(
         .find(|choice| choice.id == placement.monitor)
         .unwrap_or(primary);
     if selected.id != placement.monitor {
-        placement = WindowPlacement::default_for(selected.id.clone());
+        placement = WindowPlacement::default_for(selected.id.clone(), config.size);
     }
     clamp_to_monitor(&mut placement, &selected.monitor);
     let placement = Rc::new(RefCell::new(placement));
@@ -210,9 +224,11 @@ fn build_window(
     let page_loaded = Rc::new(Cell::new(false));
     let loaded_activity = Rc::clone(&current_activity);
     let loaded_flag = Rc::clone(&page_loaded);
+    let preferences = config.renderer.clone();
     web_view.connect_load_changed(move |web_view, event| {
         if event == LoadEvent::Finished {
             loaded_flag.set(true);
+            send_preferences(web_view, &preferences);
             send_update(web_view, AnimationUpdate::steady(loaded_activity.get()));
         }
     });
@@ -267,6 +283,22 @@ fn restrict_navigation(web_view: &WebView) {
 
 fn is_internal_document_uri(uri: &str) -> bool {
     uri == "about:blank" || uri.starts_with("about:blank#")
+}
+
+fn send_preferences(web_view: &WebView, preferences: &RendererPreferences) {
+    let payload = serde_json::to_string(preferences).expect("renderer preferences must serialize");
+    let script = format!("window.oPet.setPreferences({payload})");
+    web_view.evaluate_javascript(
+        &script,
+        None,
+        None,
+        None::<&gtk::gio::Cancellable>,
+        |result| {
+            if let Err(error) = result {
+                eprintln!("无法向渲染页面发送配置: {error}");
+            }
+        },
+    );
 }
 
 fn send_update(web_view: &WebView, update: AnimationUpdate) {
@@ -367,7 +399,8 @@ fn connect_monitor_changes(
         let selected = match selected {
             Some(selected) => selected,
             None => {
-                *placement = WindowPlacement::default_for(primary.id.clone());
+                let configured_size = placement.width;
+                *placement = WindowPlacement::default_for(primary.id.clone(), configured_size);
                 primary
             }
         };
