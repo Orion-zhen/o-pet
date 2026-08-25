@@ -36,6 +36,8 @@ fn default_endpoint() -> io::Result<PathBuf> {
 
 #[cfg(windows)]
 fn default_endpoint() -> io::Result<PathBuf> {
+    use std::fmt::Write as _;
+
     use sha2::{Digest, Sha256};
 
     let username = required_environment("USERNAME")?;
@@ -44,11 +46,12 @@ fn default_endpoint() -> io::Result<PathBuf> {
     digest.update(username.to_string_lossy().as_bytes());
     digest.update([0]);
     digest.update(home.to_string_lossy().as_bytes());
-    let identity = format!("{:x}", digest.finalize());
-    Ok(PathBuf::from(format!(
-        r"\\.\pipe\o-pet-{}",
-        &identity[..16]
-    )))
+    let digest = digest.finalize();
+    let mut identity = String::with_capacity(16);
+    for byte in &digest[..8] {
+        write!(&mut identity, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(PathBuf::from(format!(r"\\.\pipe\o-pet-{identity}")))
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]

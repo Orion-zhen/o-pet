@@ -35,6 +35,6 @@ mod tests {
         assert!(!PAGE.contains("<link "));
         assert!(PAGE.contains("contextmenu"));
         assert!(PAGE.contains("event.preventDefault()"));
-        assert!(PAGE.ends_with("</html>\n"));
+        assert_eq!(PAGE.lines().next_back(), Some("</html>"));
     }
 }
