@@ -1,4 +1,4 @@
-/* L3 — hop / pn / spinBounce / spinDizzy / spinWild. Source hr, ai, wie, ys. */
+/* 一次性身体动作：跳跃、旋转、眩晕和庆祝。 */
 (function (g) {
   const { spring, K2, rand, sign } = g.GROK_MATH;
 
@@ -32,7 +32,19 @@
   }
 
   function evalTrick(trick, now) {
-    const empty = { turn: null, Kr: 0, yi: 0, ki: 0, Yr: 0, Zr: 0, wi: 0, lidMul: null, eyeBoost: null, hop: 0, done: !trick, wantHop: false };
+    const empty = {
+      turnRadians: null,
+      rollOffsetDeg: 0,
+      xOffsetPx: 0,
+      yOffsetPx: 0,
+      freeRollDeg: 0,
+      gazeXPx: 0,
+      gazeYPx: 0,
+      lidOverride: null,
+      eyeScale: null,
+      done: !trick,
+      requestHop: false,
+    };
     if (!trick) return empty;
     const Et = (now - trick.t0) / 1000;
     const { kind, dir, turns } = trick;
@@ -95,7 +107,19 @@
       }
     }
 
-    return { turn, Kr, yi, ki, Yr, Zr, wi, lidMul, eyeBoost, hop: 0, done, wantHop };
+    return {
+      turnRadians: turn,
+      rollOffsetDeg: Kr,
+      xOffsetPx: yi,
+      yOffsetPx: ki,
+      freeRollDeg: Yr,
+      gazeXPx: Zr,
+      gazeYPx: wi,
+      lidOverride: lidMul,
+      eyeScale: eyeBoost,
+      done,
+      requestHop: wantHop,
+    };
   }
 
   function makeSpinTurn(turns = 1, dir = sign()) {
@@ -108,7 +132,13 @@
     return Math.abs(s.t - s.x) < 0.004 && Math.abs(s.v) < 0.015;
   }
 
-  g.GROK_TRICKS = {
-    HOP_SEGS, HOP_DUR, hopY, startTrick, evalTrick, makeSpinTurn, spinTurnSettled,
-  };
+  g.GROK_ACTIONS = Object.freeze({
+    HOP_SEGS,
+    HOP_DUR,
+    sampleHop: hopY,
+    startTrick,
+    sampleTrick: evalTrick,
+    startSpin: makeSpinTurn,
+    spinSettled: spinTurnSettled,
+  });
 })(window);

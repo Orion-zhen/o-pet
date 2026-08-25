@@ -1,8 +1,7 @@
-/* L3 — eye morph, wink, blink queue, placement. Source en / ks / mn / P2. */
+/* 眼睛渲染和眨眼队列。眼形、视线和脸部动态由独立控制器提供。 */
 (function (g) {
-  const {
-    clamp, lerpPoly, centroid, polyPath, Dke, spanAt, spanPoly, Rn,
-  } = g.GROK_MATH;
+  const { clamp, Dke } = g.GROK_MATH;
+  const { centroid, polyPath, spanAt, spanPoly } = g.GROK_GEOMETRY;
 
   function queueBlink(q, now) {
     q.push(
@@ -36,7 +35,7 @@
     const {
       now, polys, morphT, shape, face, faceTune, uniformEyes, eyeScaleProp,
       blinkX, gazeX, gazeY, winkAt, winkEye, turn, cr, pointer, notifyX,
-      overlayX, eyeEls, badgeEl, badgeColor, Re, G9e, VJt, extras, ringHint,
+      formAmount, eyeEls, badgeEl, badgeColor, Re, G9e, VJt, extras, ringHint,
     } = opt;
     const pulse = 1 + 0.07 * Math.sin(morphT * Math.PI);
     const $i = {
@@ -145,15 +144,15 @@
         Kj += pullX;
         Ko += pullY;
       }
-      Kj += gazeX * gazeW + (extras.Zr || 0);
-      Ko += gazeY * gazeW + (extras.wi || 0);
+      Kj += gazeX * gazeW + (extras.gazeXPx || 0);
+      Ko += gazeY * gazeW + (extras.gazeYPx || 0);
       const $ee = clamp(notifyX, 0, 1);
       Kj -= 10 * $ee;
       Ko += 7 * $ee;
 
       const Vee = clamp(_c * Hee * pulse, 0.02, 2.4);
       const _2 = clamp(vre * lid * u1 * pulse, 0.02, 2.4);
-      eyeEls[i].style.display = bre && overlayX < 0.5 ? "" : "none";
+      eyeEls[i].style.display = bre && formAmount < 0.5 ? "" : "none";
       const useTurnOr3d = turn != null || use3d;
       const Ume = G9e * _2 + 2;
       const vl = clamp(
@@ -215,5 +214,5 @@
     }
   }
 
-  g.GROK_EYES = { queueBlink, consumeBlink, paintEyes, lerpPoly };
+  g.GROK_EYES = Object.freeze({ queueBlink, consumeBlink, paintEyes });
 })(window);

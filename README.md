@@ -27,6 +27,17 @@ npm run renderer:test
 cargo run --release
 ```
 
+## 渲染器架构
+
+渲染器按职责分为四层：
+
+- `renderer/host.js` 根据活动、Cue、空闲深度和用户交互选择动画。
+- `renderer/grok/presets.js` 组合场景，`sequences.js` 安排有限动画序列。场景由 `motion`、`face`、`expression`、`gaze`、`form`、`decoration`、`particles`、`camera` 和 `badge` 九个固定通道组成。
+- `motion.js`、`expression.js`、`gaze.js`、`actions.js` 和 `choreography.js` 计算各通道的目标值与瞬态动作。控制器不生成 SVG 路径，也不直接调用其他控制器。
+- `geometry.js` 从原始形状数据派生轮廓、截面和旋转形变。`render.js`、`eyes.js`、`effects.js` 和 `particles.js` 将已混合的状态写入 SVG。
+
+`geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。
+
 启动后，macOS 会在 Dock 中显示应用图标。macOS、Windows 和 Linux 均会创建托盘图标。托盘菜单可显示或隐藏桌宠，也可退出应用。Linux 桌面环境必须提供 StatusNotifierItem 主机才能显示托盘图标。
 
 ## 应用打包

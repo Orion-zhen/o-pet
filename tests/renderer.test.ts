@@ -1,12 +1,24 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const hostSource = readFileSync(new URL("../renderer/host.js", import.meta.url), "utf8");
-const fxSource = readFileSync(new URL("../renderer/grok/fx.js", import.meta.url), "utf8");
+const particlesSource = readFileSync(new URL("../renderer/grok/particles.js", import.meta.url), "utf8");
+const actionsSource = readFileSync(new URL("../renderer/grok/actions.js", import.meta.url), "utf8");
+const characterSource = readFileSync(new URL("../renderer/grok/character.js", import.meta.url), "utf8");
+const choreographySource = readFileSync(new URL("../renderer/grok/choreography.js", import.meta.url), "utf8");
+const effectsSource = readFileSync(new URL("../renderer/grok/effects.js", import.meta.url), "utf8");
+const eyesSource = readFileSync(new URL("../renderer/grok/eyes.js", import.meta.url), "utf8");
+const renderSource = readFileSync(new URL("../renderer/grok/render.js", import.meta.url), "utf8");
 const geometrySource = readFileSync(new URL("../renderer/grok/geometry-data.js", import.meta.url), "utf8");
+const geometryEngineSource = readFileSync(new URL("../renderer/grok/geometry.js", import.meta.url), "utf8");
 const mathSource = readFileSync(new URL("../renderer/grok/math.js", import.meta.url), "utf8");
-const poseSource = readFileSync(new URL("../renderer/grok/pose.js", import.meta.url), "utf8");
+const motionSource = readFileSync(new URL("../renderer/grok/motion.js", import.meta.url), "utf8");
+const expressionSource = readFileSync(new URL("../renderer/grok/expression.js", import.meta.url), "utf8");
+const gazeSource = readFileSync(new URL("../renderer/grok/gaze.js", import.meta.url), "utf8");
+const presetsSource = readFileSync(new URL("../renderer/grok/presets.js", import.meta.url), "utf8");
+const sequencesSource = readFileSync(new URL("../renderer/grok/sequences.js", import.meta.url), "utf8");
 const tablesSource = readFileSync(new URL("../renderer/grok/tables.js", import.meta.url), "utf8");
 
 type EventListener = (event: RendererEvent) => void;
@@ -144,6 +156,27 @@ class CharacterStub {
 		this.scenes.push(scene);
 	}
 
+	setPreset(value: unknown): void {
+		const detailed = value as {
+			preset?: { channels: Record<string, { id: string | null }>; effectId?: string | null };
+			channels?: Record<string, { id: string | null }>;
+			effectId?: string | null;
+			direction?: number;
+			variant?: string;
+		};
+		const preset = detailed.preset ?? detailed;
+		const channels = preset.channels;
+		if (channels === undefined) throw new Error("无效动画预设");
+		this.setScene({
+			pose: channels.motion?.id ?? "idle",
+			expression: channels.expression?.id ?? "idle",
+			effect: preset.effectId ?? null,
+			gaze: channels.gaze?.id ?? "idle",
+			...(detailed.direction === undefined ? {} : { direction: detailed.direction }),
+			...(detailed.variant === undefined ? {} : { variant: detailed.variant }),
+		});
+	}
+
 	setState(state: string): void {
 		this.setScene({ pose: state, expression: state, effect: state, gaze: state });
 	}
@@ -262,6 +295,8 @@ function createHarness(initiallyHidden = false, random = (): number => 0): {
 		GrokCharacter: HarnessCharacter,
 	};
 	windowStub.window = windowStub;
+	vm.runInNewContext(presetsSource, windowStub);
+	vm.runInNewContext(sequencesSource, windowStub);
 	vm.runInNewContext(hostSource, windowStub);
 	const factory = windowStub.OPetRenderer as RendererFactory;
 	const document = new DocumentStub();
@@ -292,11 +327,20 @@ function latest(character: CharacterStub): CharacterScene {
 class SvgElementStub {
 	readonly attributes = new Map<string, string>();
 	readonly children: SvgElementStub[] = [];
-	readonly style: Record<string, string> = {};
+	readonly style: Record<string, unknown> = {
+		setProperty: (name: string, value: string): void => {
+			this.style[name] = value;
+		},
+	};
 	parent: SvgElementStub | undefined;
 	removed = false;
+	innerHTML = "";
+	id = "";
 
-	constructor(readonly tag: string, private readonly onRemove: (element: SvgElementStub) => void) {}
+	constructor(
+		readonly tag: string,
+		private readonly onRemove: (element: SvgElementStub) => void = () => {},
+	) {}
 
 	appendChild(child: SvgElementStub): SvgElementStub {
 		child.parent = this;
@@ -306,6 +350,7 @@ class SvgElementStub {
 
 	setAttribute(name: string, value: string): void {
 		this.attributes.set(name, value);
+		if (name === "id") this.id = value;
 	}
 
 	getAttribute(name: string): string | null {
@@ -314,6 +359,10 @@ class SvgElementStub {
 
 	removeAttribute(name: string): void {
 		this.attributes.delete(name);
+	}
+
+	getBoundingClientRect(): { height: number; left: number; top: number; width: number } {
+		return { height: 190, left: 0, top: 0, width: 190 };
 	}
 
 	remove(): void {
@@ -353,23 +402,153 @@ function createParticleHarness(): {
 	const back = createElement("g");
 	const front = createElement("g");
 	const windowStub: {
-		GROK_FX?: { createParticles(options: unknown): ParticleController };
+		GROK_PARTICLES?: { create(options: unknown): ParticleController };
 		GROK_GEO: { Re: number };
 	} = { GROK_GEO: { Re: 114.2705 } };
 	const deterministicMath = Object.create(Math) as Math;
 	deterministicMath.random = () => 0.5;
-	vm.runInNewContext(fxSource, {
+	const context = {
 		document: { createElementNS: (_namespace: string, tag: string) => createElement(tag) },
 		matchMedia: () => ({ matches: false }),
 		Math: deterministicMath,
 		window: windowStub,
-	});
-	const factory = windowStub.GROK_FX;
+	};
+	vm.runInNewContext(mathSource, context);
+	vm.runInNewContext(geometryEngineSource, context);
+	vm.runInNewContext(particlesSource, context);
+	const factory = windowStub.GROK_PARTICLES;
 	if (factory === undefined) throw new Error("粒子渲染器未加载");
 	return {
 		elements,
-		particles: factory.createParticles({ back, front, getRadius: () => 52, idPrefix: "test-" }),
+		particles: factory.create({ back, front, getRadius: () => 52, idPrefix: "test-" }),
 		removedTrails: () => removedTrails,
+	};
+}
+
+type AnimationFrameCallback = (time: number) => void;
+
+interface VisualPreset {
+	channels: Record<string, { id: string | null }>;
+	effectId?: string | null;
+}
+
+interface VisualCharacter {
+	setPreset(preset: unknown): void;
+	setShape(shape: string): void;
+	winkOnce(eye?: number): void;
+	spinOnce(turns?: number, direction?: number): void;
+	bounceOnce(): void;
+	pounceOnce(direction?: number, strength?: number): void;
+	destroy(): void;
+}
+
+class VisualWindowStub extends EventTargetStub {
+	GrokCharacter?: new (svg: SvgElementStub, options: Record<string, unknown>) => VisualCharacter;
+	GROK_PRESETS?: {
+		scenes: Record<string, VisualPreset>;
+		withDetails(preset: VisualPreset, details: Record<string, unknown>): unknown;
+	};
+}
+
+function serializeSvg(element: SvgElementStub): unknown {
+	return {
+		tag: element.tag,
+		attributes: Object.fromEntries([...element.attributes].sort(([left], [right]) => left.localeCompare(right))),
+		style: Object.fromEntries(Object.entries(element.style)
+			.filter(([, value]) => typeof value !== "function" && value !== "" && value !== undefined)
+			.sort(([left], [right]) => left.localeCompare(right))),
+		children: element.children.map(serializeSvg),
+	};
+}
+
+function svgHash(svg: SvgElementStub): string {
+	return createHash("sha256").update(JSON.stringify(serializeSvg(svg))).digest("hex").slice(0, 16);
+}
+
+function createVisualHarness(): {
+	character: VisualCharacter;
+	frame(time: number): void;
+	presets: NonNullable<VisualWindowStub["GROK_PRESETS"]>;
+	setTime(time: number): void;
+	svg: SvgElementStub;
+} {
+	let now = 0;
+	let nextFrameId = 1;
+	const frames = new Map<number, AnimationFrameCallback>();
+	const documentElement = new EventTargetStub();
+	const documentStub = {
+		createElementNS: (_namespace: string, tag: string): SvgElementStub => new SvgElementStub(tag),
+		documentElement,
+	};
+	const deterministicMath = Object.create(Math) as Math;
+	deterministicMath.random = () => 0.5;
+	const windowStub = new VisualWindowStub();
+	const requestAnimationFrame = (callback: AnimationFrameCallback): number => {
+		const id = nextFrameId++;
+		frames.set(id, callback);
+		return id;
+	};
+	const cancelAnimationFrame = (id: number): void => void frames.delete(id);
+	const context = {
+		cancelAnimationFrame,
+		document: documentStub,
+		matchMedia: () => ({ matches: false }),
+		Math: deterministicMath,
+		performance: { now: (): number => now },
+		requestAnimationFrame,
+		window: windowStub,
+	};
+	Object.assign(windowStub, {
+		cancelAnimationFrame,
+		document: documentStub,
+		matchMedia: context.matchMedia,
+		performance: context.performance,
+		requestAnimationFrame,
+		window: windowStub,
+	});
+	for (const source of [
+		geometrySource,
+		mathSource,
+		geometryEngineSource,
+		tablesSource,
+		presetsSource,
+		sequencesSource,
+		motionSource,
+		expressionSource,
+		gazeSource,
+		choreographySource,
+		actionsSource,
+		particlesSource,
+		effectsSource,
+		eyesSource,
+		renderSource,
+		characterSource,
+	]) vm.runInNewContext(source, context);
+
+	const Character = windowStub.GrokCharacter;
+	const presets = windowStub.GROK_PRESETS;
+	if (Character === undefined || presets === undefined) throw new Error("完整动画引擎未加载");
+	const svg = new SvgElementStub("svg");
+	const character = new Character(svg, {
+		color: "black",
+		followPointer: false,
+		mode: "hold",
+		shape: "blob",
+		state: "spawning",
+	});
+	return {
+		character,
+		frame(time) {
+			now = time;
+			const callbacks = [...frames.values()];
+			frames.clear();
+			for (const callback of callbacks) callback(time);
+		},
+		presets,
+		setTime(time) {
+			now = time;
+		},
+		svg,
 	};
 }
 
@@ -378,11 +557,16 @@ describe("o-pet Grok 渲染器", () => {
 		const windowStub: Record<string, unknown> = {};
 		windowStub.window = windowStub;
 		vm.runInNewContext(geometrySource, windowStub);
+		vm.runInNewContext(mathSource, windowStub);
+		vm.runInNewContext(geometryEngineSource, windowStub);
 		vm.runInNewContext(tablesSource, windowStub);
 		const geometry = windowStub.GROK_GEO as {
 			eyes: unknown[];
 			palette: Record<string, unknown>;
 			shapes: Record<string, unknown>;
+		};
+		const geometryEngine = windowStub.GROK_GEOMETRY as {
+			shapeModel(name: string): { ring: number[][] };
 		};
 		const tables = windowStub.GROK_TABLES as {
 			BLINK_MS: Record<string, [number, number] | null>;
@@ -405,6 +589,115 @@ describe("o-pet Grok 渲染器", () => {
 		]);
 		expect(Object.keys(geometry.palette)).toEqual([
 			"black", "brown", "red", "orange", "yellow", "green", "cyan", "blue", "violet", "magenta", "gray",
+		]);
+		const ringSignature = Object.keys(geometry.shapes).map((name) => [
+			name,
+			geometryEngine.shapeModel(name).ring.map((point) => point.map((value) => value.toFixed(9))),
+		]);
+		expect(createHash("sha256").update(JSON.stringify(ringSignature)).digest("hex")).toBe(
+			"bbe70f8567463f0b904727f9b4a8631438598a1e345525b3d8a3875efae788ed",
+		);
+	});
+
+	it("将场景拆为固定且互不重叠的控制通道", () => {
+		const windowStub: Record<string, unknown> = {};
+		windowStub.window = windowStub;
+		vm.runInNewContext(presetsSource, windowStub);
+		vm.runInNewContext(sequencesSource, windowStub);
+		const presets = windowStub.GROK_PRESETS as {
+			CHANNELS: string[];
+			scenes: Record<string, VisualPreset>;
+		};
+		const sequences = windowStub.GROK_SEQUENCES as {
+			cues: Record<string, Array<{ preserveEffect?: boolean }>>;
+		};
+		const expectedChannels = [
+			"motion", "face", "expression", "gaze", "form",
+			"decoration", "particles", "camera", "badge",
+		];
+		expect(presets.CHANNELS).toEqual(expectedChannels);
+		for (const preset of Object.values(presets.scenes)) {
+			expect(Object.keys(preset.channels)).toEqual(expectedChannels);
+		}
+		expect(presets.scenes.coding?.channels).toMatchObject({
+			motion: { id: "working" },
+			expression: { id: "working" },
+			form: { id: "pencil" },
+			decoration: { id: "pencil" },
+			particles: { id: null },
+			camera: { id: "pencil" },
+		});
+		expect(presets.scenes.humming?.channels).toMatchObject({
+			form: { id: null },
+			decoration: { id: "hum-dots" },
+			particles: { id: "wide-spin-belts" },
+			camera: { id: null },
+		});
+		expect(sequences.cues.error_repeated?.[0]?.preserveEffect).toBe(true);
+	});
+
+	it("关键 SVG 帧与重构前的视觉基线一致", () => {
+		const harness = createVisualHarness();
+		const hashes: Array<[string, string]> = [];
+		const record = (label: string, time?: number): void => {
+			if (time !== undefined) harness.frame(time);
+			hashes.push([label, svgHash(harness.svg)]);
+		};
+		const enter = (name: string, time: number, details?: Record<string, unknown>): void => {
+			const preset = harness.presets.scenes[name];
+			if (preset === undefined) throw new Error(`缺少场景 ${name}`);
+			harness.setTime(time);
+			harness.character.setPreset(
+				details === undefined ? preset : harness.presets.withDetails(preset, details),
+			);
+		};
+
+		record("spawning@0");
+		record("spawning@16", 16);
+		enter("coding", 2000);
+		record("coding@2016", 2016);
+		record("coding@2500", 2500);
+		enter("loading", 5000);
+		record("loading@5016", 5016);
+		record("loading@5800", 5800);
+		enter("receiving", 7000);
+		record("receiving@7016", 7016);
+		record("receiving@7800", 7800);
+		enter("quizzical", 9000, { direction: 1 });
+		record("quizzical@9016", 9016);
+		record("quizzical@9900", 9900);
+		harness.setTime(11_000);
+		harness.character.setShape("cloud");
+		record("cloud@11016", 11_016);
+		record("cloud@11800", 11_800);
+		harness.setTime(13_000);
+		harness.character.spinOnce(2, -1);
+		record("spin@13016", 13_016);
+		record("spin@13700", 13_700);
+		harness.setTime(15_000);
+		harness.character.winkOnce(0);
+		harness.character.pounceOnce(1, 0.7);
+		record("wink-pounce@15016", 15_016);
+		record("wink-pounce@15320", 15_320);
+		harness.character.destroy();
+
+		expect(hashes).toEqual([
+			["spawning@0", "1955d3d2b713acdd"],
+			["spawning@16", "7dfcb20a7f8b8f5e"],
+			["coding@2016", "2553c4abddc648c0"],
+			["coding@2500", "2774aa793d24956e"],
+			["loading@5016", "4ceb4ac81639e87f"],
+			["loading@5800", "450ee61df0cd5790"],
+			["receiving@7016", "2bc241e7ae7f5034"],
+			["receiving@7800", "cdc06df5d8b2e4ee"],
+			["quizzical@9016", "06c80910b5024253"],
+			["quizzical@9900", "63c2c48d9196134d"],
+			["cloud@11016", "6c62a5c6c171ec6b"],
+			["cloud@11800", "ef631bd7db84dce3"],
+			["spin@13016", "e6e4e2ffce717860"],
+			["spin@13700", "875d1dd18171029a"],
+			["wink-pounce@15016", "a6f67525b95b8b27"],
+			["wink-pounce@15320", "dd419c0427ef8a6c"],
 		]);
 	});
 
@@ -863,30 +1156,47 @@ describe("o-pet Grok 渲染器", () => {
 		deterministicMath.random = () => 0.5;
 		vm.runInNewContext(mathSource, { Math: deterministicMath, window: windowStub });
 		vm.runInNewContext(tablesSource, { Math: deterministicMath, window: windowStub });
-		vm.runInNewContext(poseSource, { Math: deterministicMath, window: windowStub });
-		const pose = windowStub.GROK_POSE as {
-			applyPose(
+		vm.runInNewContext(motionSource, { Math: deterministicMath, window: windowStub });
+		vm.runInNewContext(expressionSource, { Math: deterministicMath, window: windowStub });
+		vm.runInNewContext(gazeSource, { Math: deterministicMath, window: windowStub });
+		const motion = windowStub.GROK_MOTION as {
+			sample(
 				state: string,
-				mt: number,
-				dtState: number,
+				globalSec: number,
+				localSec: number,
 				now: number,
 				context: Record<string, unknown>,
-				extra: Record<string, unknown>,
-			): { faceRoll: number; spin: number; tx: number };
-			nextGaze(state: string): { x: number; y: number };
+				options: Record<string, unknown>,
+			): { rollDeg: number; xPx: number };
 		};
-		const context = { quizzicalBlinked: false, wantBlink: false };
-		const moving = pose.applyPose("quizzical", 1, 0.9, 900, context, { direction: 1 });
-		expect(moving.spin).not.toBe(0);
-		expect(moving.faceRoll).not.toBe(0);
-		const reduced = pose.applyPose("quizzical", 1, 0.9, 900, context, {
+		const expression = windowStub.GROK_EXPRESSION as {
+			sample(
+				state: string,
+				globalSec: number,
+				localSec: number,
+				now: number,
+				context: Record<string, unknown>,
+				options: Record<string, unknown>,
+			): { faceRollDeg: number };
+		};
+		const gaze = windowStub.GROK_GAZE as { next(state: string): { x: number; y: number } };
+		const context = { quizzicalBlinked: false };
+		const moving = motion.sample("quizzical", 1, 0.9, 900, context, { direction: 1 });
+		const movingFace = expression.sample("quizzical", 1, 0.9, 900, context, { direction: 1 });
+		expect(moving.rollDeg).not.toBe(0);
+		expect(movingFace.faceRollDeg).not.toBe(0);
+		const reduced = motion.sample("quizzical", 1, 0.9, 900, context, {
 			direction: 1,
 			reduceMotion: true,
 		});
-		expect(reduced.spin).toBe(0);
-		expect(reduced.tx).toBe(0);
-		expect(reduced.faceRoll).not.toBe(0);
-		expect(pose.nextGaze("front")).toMatchObject({ x: 0, y: 0 });
+		const reducedFace = expression.sample("quizzical", 1, 0.9, 900, context, {
+			direction: 1,
+			reduceMotion: true,
+		});
+		expect(reduced.rollDeg).toBe(0);
+		expect(reduced.xPx).toBe(0);
+		expect(reducedFace.faceRollDeg).not.toBe(0);
+		expect(gaze.next("front")).toMatchObject({ x: 0, y: 0 });
 	});
 
 	it("销毁时释放监听、计时器和角色", () => {

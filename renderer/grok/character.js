@@ -1,20 +1,26 @@
-/* L2 — GrokCharacter. Orchestrates pose, eyes, tricks, overlays. Source $_t + sd(). */
+/* 动画运行时。解析控制通道、推进弹簧并协调一次性动作。 */
 (function (g) {
   const M = g.GROK_MATH;
   const T = g.GROK_TABLES;
-  const { applyPose, nextGaze } = g.GROK_POSE;
-  const TR = g.GROK_TRICKS;
+  const MOTION = g.GROK_MOTION;
+  const EXPRESSION = g.GROK_EXPRESSION;
+  const { next: nextGaze } = g.GROK_GAZE;
+  const CHOREOGRAPHY = g.GROK_CHOREOGRAPHY;
+  const ACTIONS = g.GROK_ACTIONS;
   const EY = g.GROK_EYES;
-  const FX = g.GROK_FX;
+  const FX = g.GROK_EFFECTS;
+  const RENDER = g.GROK_RENDER;
+  const GEO = g.GROK_GEOMETRY;
   const {
-    spring, stepSpring, springSteps, clamp, rand, sign, K2, Dke, lerpPoly, lerpFace, relRot, mapPointer, Rn,
+    spring, stepSpring, springSteps, clamp, rand, sign, K2, mapPointer, Rn,
   } = M;
+  const { lerpPoly, lerpFace } = GEO;
   const {
     GROUPS, EYE_PLAYLIST, EYE_HOLD_MS, BLINK_MS,
     ONBOARDING, ONBOARDING_MS, onboardMood,
     SPRINGS, FACE_TUNE, POSE, POSE_HOME, UNIFORM_EYES,
-    WINK_STATES, poseScale, shapeEyeScale, overlayViewZoom,
-    VIEW, VIEW_HALF, VIEW_MID, inkFg, inkCss, EYE_BG,
+    WINK_STATES, poseScale, shapeEyeScale,
+    inkFg, inkCss, EYE_BG,
   } = T;
 
   class GrokCharacter {
@@ -25,10 +31,16 @@
       this.scheme = opts.scheme || "light";
       this.mode = opts.mode || "onboarding";
       this.state = opts.state || "idle";
-      this.poseState = null;
+      this.motionState = null;
       this.expressionState = null;
-      this.effectState = null;
+      this.faceState = null;
       this.gazeState = null;
+      this.formState = null;
+      this.decorationState = null;
+      this.particleState = null;
+      this.cameraState = null;
+      this.badgeState = null;
+      this.effectId = null;
       this.sceneDirection = 0;
       this.sceneVariant = null;
       this.faceRoll = 0;
@@ -61,12 +73,16 @@
       this.gazeX = spring(0);
       this.gazeY = spring(0);
       this.eyeMorph = spring(1);
-      this.overlay = spring(0);
-      this.overlayMix = spring(1);
+      this.formBlend = spring(0);
+      this.formMix = spring(1);
+      this.decorationBlend = spring(0);
+      this.decorationMix = spring(1);
+      this.cameraBlend = spring(0);
+      this.cameraMix = spring(1);
       this.notify = spring(0);
       this.humDots = spring(0);
       this.shapeSpring = spring(1);
-      this.overlayTurn = spring(0);
+      this.formTurn = spring(0);
       this.emphasisBlend = 0;
 
       this.eyeFrom = 0;
@@ -78,8 +94,11 @@
       this.t0 = performance.now();
       if (this.paused) this.pausedAt = this.t0;
       this.stateAt = this.t0;
-      this.poseAt = this.t0;
-      this.effectAt = this.t0;
+      this.motionAt = this.t0;
+      this.faceAt = this.t0;
+      this.formAt = this.t0;
+      this.decorationAt = this.t0;
+      this.particleAt = this.t0;
       this.last = this.t0;
       this.moodN = 0;
       this.eyeUntil = this.t0 + rand(...EYE_HOLD_MS.idle);
@@ -94,10 +113,10 @@
       this.hopAt = -1;
       this.trickCycle = Math.floor(rand(0, 5));
       this.wildWide = false;
-      this.ovSpin = 0;
-      this.ovTurnAcc = 0;
-      this.ovOn = false;
-      this.ovTurnDir = 1;
+      this.effectSpinRadians = 0;
+      this.formTurnAccumulator = 0;
+      this.formVisible = false;
+      this.formTurnDirection = 1;
       this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
       this.pointerRaw = null;
       this.rectCache = null;
@@ -108,23 +127,36 @@
       this.prevTilt = null;
       this.prevBelt = null;
       this.ctx = this._freshCtx(this.t0);
-      this.ovKind = null;
-      this.ovPrev = null;
-      this.ovTarget = null;
-      this.ovRest = false;
-      this.ovRestAt = 0;
+      this.formKind = null;
+      this.formPrev = null;
+      this.formTarget = null;
+      this.decoKind = null;
+      this.decoPrev = null;
+      this.cameraKind = null;
+      this.cameraPrev = null;
+      this.formRest = false;
+      this.formRestAt = 0;
       this.pxW = 190;
       this.pxAt = 0;
       this.partScale = 1;
       this.celebrateAt = -1;
-      this.extras = { turn: null, Kr: 0, yi: 0, ki: 0, Yr: 0, Zr: 0, wi: 0, hop: 0 };
+      this.extras = {
+        turnRadians: null,
+        rollOffsetDeg: 0,
+        xOffsetPx: 0,
+        yOffsetPx: 0,
+        freeRollDeg: 0,
+        gazeXPx: 0,
+        gazeYPx: 0,
+        hopYPx: 0,
+      };
 
-      this._build();
+      RENDER.build(this);
       this.setColor(this.colorId, this.scheme);
       this._applyPoseScale();
       this.setState(this.state, { resetEyes: true });
       this._bindPointer();
-      this._paint(this.t0);
+      RENDER.paint(this, this.t0);
       this._raf = this.paused ? null : requestAnimationFrame((t) => this._tick(t));
     }
 
@@ -146,19 +178,12 @@
         sleepTwitchEnd: 0,
         angryShakeUntil: 0,
         impulseAt: now + rand(500, 1200),
-        tyKick: 0,
-        spinKick: 0,
-        forceSleepEye: false,
-        wakeEye: null,
-        wakeBlink: false,
         wakingBlinked: false,
         slumpAt: 0,
         stAt: now + rand(6000, 10000),
-        wantPn: null,
-        wantBlink: false,
         dragCycle: -1,
         notifyPop: false,
-        wantBurst: null,
+        notifyBlink: false,
         wakingBurst: false,
         stretchBlinked: false,
         quizzicalBlinked: false,
@@ -192,8 +217,8 @@
         const delta = this.pausedAt === null ? 0 : resumedAt - this.pausedAt;
         this.pausedAt = null;
         for (const key of [
-          "t0", "stateAt", "poseAt", "effectAt", "eyeUntil", "blinkUntil", "gazeUntil",
-          "winkUntil", "ovRestAt", "celebrateAt",
+          "t0", "stateAt", "motionAt", "faceAt", "formAt", "decorationAt", "particleAt", "eyeUntil", "blinkUntil", "gazeUntil",
+          "winkUntil", "formRestAt", "celebrateAt",
         ]) {
           if (Number.isFinite(this[key]) && this[key] > -1e8) this[key] += delta;
         }
@@ -239,7 +264,7 @@
       if (!g.GROK_GEO.shapes[name] || name === this.shapeName) return;
       const R = g.GROK_GEO.Re;
       const k = K2(clamp(this.shapeSpring.x, 0, 1));
-      const rest = FX.shapeMetrics(g.GROK_GEO.shapes[this.shapeName], R);
+      const rest = GEO.shapeMetrics(this.shapeName);
       if (k >= 1 || !this.prevFace || !this.prevRing) {
         this.prevFace = rest.face;
         this.prevRing = rest.ring;
@@ -247,7 +272,7 @@
         this.prevBelt = rest.belt;
       } else {
         this.prevFace = lerpFace(this.prevFace, rest.face, k);
-        this.prevRing = FX.lerpRing(this.prevRing, rest.ring, k);
+        this.prevRing = GEO.lerpRing(this.prevRing, rest.ring, k);
         this.prevTilt += (rest.tilt - this.prevTilt) * k;
         this.prevBelt += (rest.belt - this.prevBelt) * k;
       }
@@ -287,53 +312,89 @@
     }
 
     setState(name, options = {}) {
-      this.setScene({ pose: name, expression: name, effect: name, gaze: name }, options);
+      this.setPreset(g.GROK_PRESETS.fromState(name), options);
     }
 
-    setScene(scene, { resetEyes = false } = {}) {
-      const hasEffect = Object.prototype.hasOwnProperty.call(scene, "effect");
-      const pose = scene.pose ?? this.poseState ?? this.state;
-      const expression = scene.expression ?? this.expressionState ?? pose;
-      const effect = hasEffect ? scene.effect : (this.poseState === null ? pose : this.effectState);
+    setPreset(preset, options = {}) {
+      const scene = g.GROK_PRESETS.resolve(preset);
+      if (scene) this._applyComposition(scene, options);
+    }
+
+    _applyComposition(scene, { resetEyes = false } = {}) {
+      const motion = scene.motion ?? this.motionState ?? this.state;
+      const expression = scene.expression ?? this.expressionState ?? motion;
+      const face = scene.face ?? this.faceState ?? motion;
       const gaze = scene.gaze ?? this.gazeState ?? expression;
+      const form = scene.form ?? null;
+      const decoration = scene.decoration ?? null;
+      const particles = scene.particles ?? null;
+      const camera = scene.camera ?? null;
+      const badge = scene.badge ?? null;
+      const effect = scene.effect ?? null;
       const direction = scene.direction === -1 || scene.direction === 1 ? scene.direction : 0;
       const variant = typeof scene.variant === "string" ? scene.variant : null;
-      if (!EYE_PLAYLIST[pose] || !EYE_PLAYLIST[expression] || !EYE_PLAYLIST[gaze]) return;
-      if (effect !== null && !EYE_PLAYLIST[effect]) return;
+      if (!EYE_PLAYLIST[expression]) return;
 
-      const poseChanged = pose !== this.poseState;
+      const motionChanged = motion !== this.motionState;
       const expressionChanged = expression !== this.expressionState;
-      const effectChanged = effect !== this.effectState;
+      const faceChanged = face !== this.faceState;
+      const formChanged = form !== this.formState;
+      const decorationChanged = decoration !== this.decorationState;
+      const particleChanged = particles !== this.particleState;
+      const cameraChanged = camera !== this.cameraState;
+      const badgeChanged = badge !== this.badgeState;
+      const effectIdChanged = effect !== this.effectId;
       const gazeChanged = gaze !== this.gazeState;
       const performanceChanged = direction !== this.sceneDirection || variant !== this.sceneVariant;
-      if (!poseChanged && !expressionChanged && !effectChanged && !gazeChanged && !performanceChanged && !resetEyes) return;
+      if (
+        !motionChanged
+        && !expressionChanged
+        && !faceChanged
+        && !formChanged
+        && !decorationChanged
+        && !particleChanged
+        && !cameraChanged
+        && !badgeChanged
+        && !effectIdChanged
+        && !gazeChanged
+        && !performanceChanged
+        && !resetEyes
+      ) return;
 
       const now = this._now();
-      this.state = pose;
+      this.state = motion;
       this.stateAt = now;
-      this.poseState = pose;
+      this.motionState = motion;
       this.expressionState = expression;
-      this.effectState = effect;
+      this.faceState = face;
       this.gazeState = gaze;
+      this.formState = form;
+      this.decorationState = decoration;
+      this.particleState = particles;
+      this.cameraState = camera;
+      this.badgeState = badge;
+      this.effectId = effect;
       this.sceneDirection = direction;
       this.sceneVariant = variant;
 
-      if (poseChanged || performanceChanged) {
-        this.poseAt = now;
+      if (motionChanged || performanceChanged) {
+        this.motionAt = now;
         this.ctx = this._freshCtx(now);
         this.ctx.stAt = now + (
-          pose === "excited" ? rand(400, 1100)
-          : pose === "searching" ? rand(800, 1600)
-          : pose === "working" ? rand(1200, 2400)
+          motion === "excited" ? rand(400, 1100)
+          : motion === "searching" ? rand(800, 1600)
+          : motion === "working" ? rand(1200, 2400)
           : rand(6000, 10000)
         );
-        if (pose === "drowsy") this.ctx.nodUntil = now + rand(12_000, 24_000);
-        this.celebrateAt = pose === "celebrate" ? now + 140 : -1;
+        if (motion === "drowsy") this.ctx.nodUntil = now + rand(12_000, 24_000);
+        this.celebrateAt = motion === "celebrate" ? now + 140 : -1;
         this.trick = null;
         this.spinTurn = null;
         this.hopAt = -1;
         this.wildWide = false;
       }
+
+      if (faceChanged) this.faceAt = now;
 
       if (expressionChanged || resetEyes) {
         const list = EYE_PLAYLIST[expression];
@@ -362,10 +423,17 @@
         }
       }
 
-      if (effectChanged) {
-        if (effect !== null) this.effectAt = now;
-        if (effect !== null && effect !== "writing") this.fx?.resetInk();
+      // 旧渲染器让所有特效共享进入时钟；新特效非空时同步重置，保留过渡中的逐帧结果。
+      if (effectIdChanged && effect !== null) {
+        this.formAt = now;
+        this.decorationAt = now;
+        this.particleAt = now;
+      } else {
+        if (formChanged && form !== null) this.formAt = now;
+        if (decorationChanged && decoration !== null) this.decorationAt = now;
+        if (particleChanged && particles !== null) this.particleAt = now;
       }
+      if (decorationChanged && decoration !== null && decoration !== "pencil") this.fx?.resetInk();
       if (gazeChanged) {
         if (gaze === "front" || gaze === "sleeping") {
           this.gazeX.t = 0;
@@ -384,10 +452,15 @@
     snapshot() {
       return {
         state: this.state,
-        pose: this.poseState,
+        motion: this.motionState,
         expression: this.expressionState,
-        effect: this.effectState,
+        face: this.faceState,
+        effect: this.effectId,
         gaze: this.gazeState,
+        form: this.formState,
+        decoration: this.decorationState,
+        particles: this.particleState,
+        badge: this.badgeState,
         mode: this.mode,
         shape: this.shapeName,
         color: this.colorId,
@@ -399,7 +472,6 @@
         ty: this.ty.x,
         squash: this.squash.x,
         blink: this.blink.x,
-        overlay: this.ovKind,
       };
     }
 
@@ -460,65 +532,6 @@
       document.documentElement.removeEventListener("pointerleave", this._onLeave);
     }
 
-    _build() {
-      const geo = g.GROK_GEO;
-      const vb = geo.viewBox;
-      this.svg.setAttribute("viewBox", `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`);
-      this.svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-      this.svg.style.overflow = "visible";
-      this.svg.innerHTML = "";
-      const ns = "http://www.w3.org/2000/svg";
-      const defs = document.createElementNS(ns, "defs");
-      const clip = document.createElementNS(ns, "clipPath");
-      const clipId = `grok-clip-${Math.random().toString(36).slice(2, 8)}`;
-      clip.setAttribute("id", clipId);
-      this.clipPath = document.createElementNS(ns, "path");
-      clip.appendChild(this.clipPath);
-      defs.appendChild(clip);
-      this.svg.appendChild(defs);
-
-      this.group = document.createElementNS(ns, "g");
-      this.body = document.createElementNS(ns, "path");
-      this.body.setAttribute("fill", "var(--fg, #000)");
-      const eyesG = document.createElementNS(ns, "g");
-      eyesG.setAttribute("clip-path", `url(#${clipId})`);
-      this.eyesG = eyesG;
-      this.eyeEls = [0, 1].map(() => {
-        const p = document.createElementNS(ns, "path");
-        p.setAttribute("fill", "var(--bg, #f3efe6)");
-        eyesG.appendChild(p);
-        return p;
-      });
-      this.badge = document.createElementNS(ns, "circle");
-      this.badge.setAttribute("style", "display:none");
-      this.group.appendChild(this.body);
-      this.group.appendChild(eyesG);
-      this.group.appendChild(this.badge);
-
-      this.fx = new FX.OverlayLayer();
-      const R = geo.Re;
-      this.fx.circlePath = FX.circlePathOf(R);
-      this.fx.pencilPath = FX.capsule(30, 88, R);
-      this.fx.bangPath = FX.taper(30, 17, 96, R);
-      this.fx.attach(this.svg, this.group);
-      this.particles = FX.createParticles({
-        back: this.fx.back,
-        front: this.fx.front,
-        idPrefix: this.fx.uid,
-        getRadius: () => {
-          const sh = geo.shapes[this.shapeName];
-          const k = K2(clamp(this.shapeSpring.x, 0, 1));
-          const to = sh?.beltRadius || FX.beltRadius(sh.path, R);
-          let je = k < 0.999 && this.prevBelt != null
-            ? this.prevBelt + (to - this.prevBelt) * k
-            : to;
-          if (this.effectState === "loading") je += (52 - je) * clamp(this.overlay.x, 0, 1);
-          return je;
-        },
-      });
-      this.body.setAttribute("d", geo.shapes[this.shapeName].path);
-      this.clipPath.setAttribute("d", geo.shapes[this.shapeName].path);
-    }
 
     _morphEyes(index, stiffness = 7) {
       if (index === this.eyeTo && this.eyeMorph.t === 1) return;
@@ -541,7 +554,7 @@
 
     _pn(turns = 1, dir = sign()) {
       if (this.reduceMotion || this.paused || this.spinTurn) return;
-      this.spinTurn = TR.makeSpinTurn(turns, dir);
+      this.spinTurn = ACTIONS.startSpin(turns, dir);
     }
 
     _hop(now) {
@@ -556,64 +569,107 @@
       else if (this.trickCycle === 1) {
         this.wildWide = true;
         this._pn(2);
-      } else if (this.trickCycle === 2) this.trick = TR.startTrick("spinBounce", this.reduceMotion);
-      else if (this.trickCycle === 3) this.trick = TR.startTrick("spinDizzy", this.reduceMotion);
+      } else if (this.trickCycle === 2) this.trick = ACTIONS.startTrick("spinBounce", this.reduceMotion);
+      else if (this.trickCycle === 3) this.trick = ACTIONS.startTrick("spinDizzy", this.reduceMotion);
       else {
         this._pn(1);
         this.particles.burst(16, 0.95, 0.3);
       }
     }
 
-    _stepOverlay(now) {
-      const want = FX.MAP[this.effectState] || null;
-      if (want !== this.ovTarget) {
-        this.ovTarget = want;
+    _stepVisualChannels(now) {
+      const want = this.formState;
+      if (want !== this.formTarget) {
+        this.formTarget = want;
         this.fx.overlayAt = now;
-        this.ovRest = false;
-        this.ovRestAt = 0;
+        this.formRest = false;
+        this.formRestAt = 0;
       }
       let on = want != null;
-      if (want && FX.CYCLE.has(this.effectState)) {
-        if (!this.ovRest && now - this.fx.overlayAt > (FX.CYCLE_ON[this.effectState] || 2500)) {
-          this.ovRest = true;
-          this.ovRestAt = now;
-        } else if (this.ovRest && now - this.ovRestAt > FX.CYCLE_OFF) {
-          this.ovRest = false;
+      if (want && FX.CYCLE.has(want)) {
+        if (!this.formRest && now - this.fx.overlayAt > (FX.CYCLE_ON[want] || 2500)) {
+          this.formRest = true;
+          this.formRestAt = now;
+        } else if (this.formRest && now - this.formRestAt > FX.CYCLE_OFF) {
+          this.formRest = false;
           this.fx.overlayAt = now;
         }
-        on = !this.ovRest;
+        on = !this.formRest;
       }
-      this.overlay.t = on ? 1 : 0;
-      if (on !== this.ovOn) {
+      this.formBlend.t = on ? 1 : 0;
+      if (on !== this.formVisible) {
         if (!this.reduceMotion) {
-          if (on) this.ovTurnDir = sign();
-          this.ovTurnAcc += Math.PI * this.ovTurnDir;
-          this.overlayTurn.t = this.ovTurnAcc;
+          if (on) this.formTurnDirection = sign();
+          this.formTurnAccumulator += Math.PI * this.formTurnDirection;
+          this.formTurn.t = this.formTurnAccumulator;
         }
-        this.ovOn = on;
+        this.formVisible = on;
       }
-      if (want && want !== this.ovKind) {
-        if (this.ovKind && this.overlay.x > 0.02) {
-          this.ovPrev = this.ovKind;
-          this.overlayMix.x = 0;
-          this.overlayMix.v = 0;
-          this.overlayMix.t = 1;
+      if (want && want !== this.formKind) {
+        if (this.formKind && this.formBlend.x > 0.02) {
+          this.formPrev = this.formKind;
+          this.formMix.x = 0;
+          this.formMix.v = 0;
+          this.formMix.t = 1;
         } else {
-          this.ovPrev = null;
-          this.overlayMix.x = 1;
-          this.overlayMix.v = 0;
-          this.overlayMix.t = 1;
+          this.formPrev = null;
+          this.formMix.x = 1;
+          this.formMix.v = 0;
+          this.formMix.t = 1;
         }
-        this.ovKind = want;
+        this.formKind = want;
         this.fx.overlayAt = now;
         if (want !== "pencil") this.fx.resetInk();
       }
-      if (!want && this.overlay.x < 0.004) {
-        if (this.ovKind === "pencil" || this.ovPrev === "pencil") this.fx.resetInk();
-        this.ovKind = null;
-        this.ovPrev = null;
+      if (!want && this.formBlend.x < 0.004) {
+        if (this.formKind === "pencil" || this.formPrev === "pencil") this.fx.resetInk();
+        this.formKind = null;
+        this.formPrev = null;
       }
-      if (this.overlayMix.x > 0.996) this.ovPrev = null;
+
+      const decoration = this.decorationState === "hum-dots" ? null : this.decorationState;
+      const decorationOn = decoration !== null && (decoration !== "gather" || on);
+      this.decorationBlend.t = decorationOn ? 1 : 0;
+      if (decoration && decoration !== this.decoKind) {
+        if (this.decoKind && this.decorationBlend.x > 0.02) {
+          this.decoPrev = this.decoKind;
+          this.decorationMix.x = 0;
+          this.decorationMix.v = 0;
+        } else {
+          this.decoPrev = null;
+          this.decorationMix.x = 1;
+          this.decorationMix.v = 0;
+        }
+        this.decorationMix.t = 1;
+        this.decoKind = decoration;
+      }
+      if (!decoration && this.decorationBlend.x < 0.004) {
+        this.decoKind = null;
+        this.decoPrev = null;
+      }
+
+      const camera = this.cameraState;
+      this.cameraBlend.t = camera && (camera !== "gather" || on) ? 1 : 0;
+      if (camera && camera !== this.cameraKind) {
+        if (this.cameraKind && this.cameraBlend.x > 0.02) {
+          this.cameraPrev = this.cameraKind;
+          this.cameraMix.x = 0;
+          this.cameraMix.v = 0;
+        } else {
+          this.cameraPrev = null;
+          this.cameraMix.x = 1;
+          this.cameraMix.v = 0;
+        }
+        this.cameraMix.t = 1;
+        this.cameraKind = camera;
+      }
+      if (!camera && this.cameraBlend.x < 0.004) {
+        this.cameraKind = null;
+        this.cameraPrev = null;
+      }
+      if (this.formMix.x > 0.996) this.formPrev = null;
+      if (this.decorationMix.x > 0.996) this.decoPrev = null;
+      if (this.cameraMix.x > 0.996) this.cameraPrev = null;
     }
 
     _updatePointer(now) {
@@ -654,82 +710,61 @@
       }
 
       const mt = (now - this.t0) / 1000;
-      const dtState = (now - this.poseAt) / 1000;
-      const dtEffect = (now - this.effectAt) / 1000;
-      const pose = applyPose(this.poseState, mt, dtState, now, this.ctx, {
+      const dtState = (now - this.motionAt) / 1000;
+      const dtFace = (now - this.faceAt) / 1000;
+      const dtParticle = (now - this.particleAt) / 1000;
+      const controllerOptions = {
         eyeTo: this.eyeTo,
         eyeMorphX: this.eyeMorph.x,
         blinkX: this.blink.x,
-        effectState: this.effectState,
+        allowAmbientSpin: this.formState !== "pencil",
         direction: this.sceneDirection,
         variant: this.sceneVariant,
         reduceMotion: this.reduceMotion,
-      });
-      this.spin.t = pose.spin;
-      this.tx.t = pose.tx;
-      this.ty.t = pose.ty;
-      this.squash.t = pose.squash;
-      this.eyeScale.t = pose.eyeBoost;
-      this.faceRoll = pose.faceRoll;
-      this.eyeLids = pose.eyeLids;
-      if (this.ctx.tyKick) {
-        this.ty.v += this.ctx.tyKick;
-        this.ctx.tyKick = 0;
-      }
-      if (this.ctx.spinKick) {
-        this.spin.v += this.ctx.spinKick;
-        this.ctx.spinKick = 0;
-      }
-      if (this.ctx.forceSleepEye) {
-        this.ctx.forceSleepEye = false;
-        this._morphEyes(13, 11);
-      }
-      if (this.ctx.wakeEye) {
-        this._morphEyes(this.ctx.wakeEye[0], this.ctx.wakeEye[1]);
-        this.ctx.wakeEye = null;
-      }
-      if (this.ctx.wakeBlink && !this.ctx.wakingBlinked && this.blinkQueue.length === 0) {
-        EY.queueBlink(this.blinkQueue, now);
-        this.ctx.wakingBlinked = true;
-      }
-      this.ctx.wakeBlink = false;
-      if (this.ctx.wantBlink) {
-        EY.queueBlink(this.blinkQueue, now);
-        this.ctx.wantBlink = false;
-      }
-      if (this.ctx.wantPn) {
-        this._pn(...this.ctx.wantPn);
-        this.ctx.wantPn = null;
-      }
-      if (this.ctx.wantBurst) {
-        this.particles.burst(this.ctx.wantBurst[0], this.ctx.wantBurst[1]);
-        this.ctx.wakingBurst = true;
-        this.ctx.wantBurst = null;
+      };
+      const motion = MOTION.sample(this.motionState, mt, dtState, now, this.ctx, controllerOptions);
+      const expression = EXPRESSION.sample(this.faceState, mt, dtFace, now, this.ctx, controllerOptions);
+      this.spin.t = motion.rollDeg;
+      this.tx.t = motion.xPx;
+      this.ty.t = motion.yPx;
+      this.squash.t = motion.squashY;
+      this.eyeScale.t = expression.eyeScale;
+      this.faceRoll = expression.faceRollDeg;
+      this.eyeLids = expression.eyeLids;
+      if (motion.impulse.yVelocity) this.ty.v += motion.impulse.yVelocity;
+      if (motion.impulse.rollVelocity) this.spin.v += motion.impulse.rollVelocity;
+      if (expression.eyeTarget) this._morphEyes(expression.eyeTarget[0], expression.eyeTarget[1]);
+      if (expression.requestBlink) EY.queueBlink(this.blinkQueue, now);
+      if (motion.impulse.spin) this._pn(...motion.impulse.spin);
+      for (const event of CHOREOGRAPHY.sample(this.motionState, dtState, this.ctx)) {
+        if (event.channel === "particles" && event.type === "burst") {
+          this.particles.burst(event.count, event.strength);
+        }
       }
 
-      this._stepOverlay(now);
+      this._stepVisualChannels(now);
 
       if (this.celebrateAt > 0 && now >= this.celebrateAt && !this.trick && !this.spinTurn) {
-        this.trick = TR.startTrick("spinWild", this.reduceMotion);
+        this.trick = ACTIONS.startTrick("spinWild", this.reduceMotion);
         this.celebrateAt = now + 6200;
       }
 
-      const tf = TR.evalTrick(this.trick, now);
-      if (tf.wantHop) this._hop(now);
+      const tf = ACTIONS.sampleTrick(this.trick, now);
+      if (tf.requestHop) this._hop(now);
       if (tf.done) this.trick = null;
-      let hop = TR.hopY(this.hopAt, now);
+      let hop = ACTIONS.sampleHop(this.hopAt, now);
       if (hop == null) {
         this.hopAt = -1;
         hop = 0;
       }
-      let turn = tf.turn;
+      let turnRadians = tf.turnRadians;
       if (this.spinTurn) {
-        turn = (turn ?? 0) + this.spinTurn.x;
-        if (TR.spinTurnSettled(this.spinTurn)) this.spinTurn = null;
+        turnRadians = (turnRadians ?? 0) + this.spinTurn.x;
+        if (ACTIONS.spinSettled(this.spinTurn)) this.spinTurn = null;
       }
-      this.extras = { ...tf, turn, hop };
+      this.extras = { ...tf, turnRadians, hopYPx: hop };
 
-      if (this.extras.eyeBoost != null) this.eyeScale.t = this.extras.eyeBoost;
+      if (this.extras.eyeScale != null) this.eyeScale.t = this.extras.eyeScale;
 
       if (this.expressionState !== "waking" && this.expressionState !== "sleeping" && now >= this.eyeUntil) {
         const list = EYE_PLAYLIST[this.expressionState];
@@ -745,7 +780,7 @@
         this.blinkUntil = now + rand(...blinkCadence);
       }
       const blinkKey = EY.consumeBlink(this.blinkQueue, now);
-      this.blink.t = blinkKey ?? (this.blinkQueue.length ? this.blink.t : (this.extras.lidMul ?? pose.lid));
+      this.blink.t = blinkKey ?? (this.blinkQueue.length ? this.blink.t : (this.extras.lidOverride ?? expression.restLid));
 
       if (now >= this.gazeUntil) {
         const gz = nextGaze(this.gazeState, this.sceneDirection);
@@ -767,13 +802,13 @@
         this.blink.t = Math.max(this.blink.t, 1.18);
       }
 
-      const humming = this.effectState === "humming";
-      const loading = this.effectState === "loading";
+      const humming = this.particleState === "wide-spin-belts";
+      const loading = this.particleState === "spin-belts";
       if ((humming || loading) && !this.reduceMotion) {
-        const Zt = dtEffect;
+        const Zt = dtParticle;
         const dn = loading ? 3 : 1.6;
         const on = Zt < 0.5 ? 7 * K2(Zt / 0.5) : Zt < 1.3 ? 7 + (dn - 7) * K2((Zt - 0.5) / 0.8) : dn + 0.3 * Math.sin(Zt * 0.5);
-        this.ovSpin += on * dt;
+        this.effectSpinRadians += on * dt;
       }
 
       if (this.reduceMotion) {
@@ -797,23 +832,31 @@
         stepSpring(this.humDots, ...SPRINGS.humDots, step);
         stepSpring(this.gazeX, ...SPRINGS.gazeX, step);
         stepSpring(this.gazeY, ...SPRINGS.gazeY, step);
-        stepSpring(this.overlay, ...SPRINGS.overlay, step);
-        stepSpring(this.overlayMix, ...SPRINGS.overlayMix, step);
+        stepSpring(this.formBlend, ...SPRINGS.visual, step);
+        stepSpring(this.formMix, ...SPRINGS.visualMix, step);
+        stepSpring(this.decorationBlend, ...SPRINGS.visual, step);
+        stepSpring(this.decorationMix, ...SPRINGS.visualMix, step);
+        stepSpring(this.cameraBlend, ...SPRINGS.visual, step);
+        stepSpring(this.cameraMix, ...SPRINGS.visualMix, step);
         stepSpring(this.shapeSpring, ...SPRINGS.shape, step);
-        stepSpring(this.overlayTurn, ...SPRINGS.overlayTurn, step);
+        stepSpring(this.formTurn, ...SPRINGS.formTurn, step);
       }
       if (this.reduceMotion) {
-        this.overlayMix.x = 1;
-        this.overlayTurn.x = this.overlayTurn.t;
-        this.overlay.x = this.overlay.t;
+        this.formMix.x = 1;
+        this.decorationMix.x = 1;
+        this.cameraMix.x = 1;
+        this.formTurn.x = this.formTurn.t;
+        this.formBlend.x = this.formBlend.t;
+        this.decorationBlend.x = this.decorationBlend.t;
+        this.cameraBlend.x = this.cameraBlend.t;
       }
-      this.notify.t = this.effectState === "notifying" ? 1 : 0;
-      this.humDots.t = this.effectState === "humming" ? 1 : 0;
+      this.notify.t = this.badgeState === "notification" ? 1 : 0;
+      this.humDots.t = this.decorationState === "hum-dots" ? 1 : 0;
 
       let spinAngle = 0;
       if (this.spinTurn) spinAngle = this.spinTurn.x;
-      else if (this.extras.turn != null) spinAngle = this.extras.turn;
-      else if (humming || loading) spinAngle = this.ovSpin;
+      else if (this.extras.turnRadians != null) spinAngle = this.extras.turnRadians;
+      else if (humming || loading) spinAngle = this.effectSpinRadians;
       if (now - this.pxAt > 500 && this.svg.getBoundingClientRect) {
         const w = this.svg.getBoundingClientRect().width;
         if (w > 0) {
@@ -830,153 +873,10 @@
       });
 
       this._updatePointer(now);
-      this._paint(now);
+      RENDER.paint(this, now);
       this._raf = this.paused ? null : requestAnimationFrame((t) => this._tick(t));
     }
 
-    _paint(now) {
-      const geo = g.GROK_GEO;
-      const R = geo.Re;
-      const shape = geo.shapes[this.shapeName];
-      const morphK = K2(clamp(this.shapeSpring.x, 0, 1));
-      const morphing = morphK < 0.999 && this.prevFace;
-      const face = morphing ? lerpFace(this.prevFace, shape.face, morphK) : shape.face;
-      const fromTilt = this.prevTilt ?? (geo.shapes[this.prevShape]?.tiltScale || 1);
-      const tilt = morphing
-        ? fromTilt + ((shape.tiltScale || 1) - fromTilt) * morphK
-        : (shape.tiltScale || 1);
-      const yl = clamp(this.overlay.x, 0, 1);
-      const mix = clamp(this.overlayMix.x, 0, 1);
-      this.fx._reduce = this.reduceMotion;
-      const ov = this.fx.extras(now, this.effectAt, this.ovKind, this.ovPrev, yl, mix);
-      const bodyW = 1 - yl;
-      const ex = this.extras;
-      const tx = this.tx.x * bodyW + ex.yi * bodyW + ov.yre * yl;
-      const ty = (this.ty.x + ex.hop) * bodyW + ex.ki * bodyW - ov.rX.lift * ov.Lee + ov.aX * yl;
-      const rot = (this.spin.x * bodyW + ex.Kr * bodyW) * tilt + (ex.Yr || 0) * bodyW + ov.wl * yl;
-      const sx = bodyW + ov.wre * yl;
-      const sy = this.squash.x * bodyW + ov.wre * yl;
-      this.group.setAttribute(
-        "transform",
-        `translate(${(R + tx).toFixed(2)} ${(R + ty).toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-R} ${-R})`
-      );
-      this.group.style.opacity = ((1 - (1 - ov.rX.tone) * ov.Lee) * (1 - ov.fade)).toFixed(3);
-
-      const Jc = clamp(yl / FX.P_BLEND, 0, 1);
-      const pencil = this.ovKind === "pencil" || this.ovPrev === "pencil";
-      const tear = geo.shapes.teardrop?.path;
-      const spinAmt = ex.turn;
-      const spinning = spinAmt != null;
-      const restRing = morphing
-        ? FX.lerpRing(this.prevRing, FX.shapeRing(shape.path, R), morphK)
-        : FX.shapeRing(shape.path, R);
-      let liveRing = restRing;
-      let turned = false;
-      const turnAt = !morphing && spinning ? FX.turnAtOf(this.shapeName, shape.path, R) : null;
-      if (turnAt) {
-        liveRing = turnAt(spinAmt);
-        turned = true;
-      }
-      let faceTop = shape.top;
-      let faceBottom = shape.bottom;
-      if (morphing || turned) {
-        faceTop = Infinity;
-        faceBottom = -Infinity;
-        for (const p of liveRing) {
-          if (p[1] < faceTop) faceTop = p[1];
-          if (p[1] > faceBottom) faceBottom = p[1];
-        }
-      }
-      let bodyD;
-      if (Jc >= 1) {
-        bodyD = pencil ? FX.closedSpline(FX.overlayRing(this.ovKind, R, tear)) : this.fx.circlePath;
-      } else if (Jc <= 0 && !morphing && !turned) {
-        bodyD = shape.path;
-      } else {
-        const to = FX.overlayRing(this.ovKind || this.ovPrev, R, tear);
-        bodyD = FX.closedSpline(Jc <= 0 ? liveRing : FX.lerpRing(liveRing, to, K2(Jc)));
-      }
-      this.body.setAttribute("d", bodyD);
-      this.clipPath.setAttribute("d", bodyD);
-
-      this.fx.paint(now, this.effectAt, this.ovKind, this.ovPrev, yl, mix, R, this.reduceMotion);
-
-      const shrink = 1 - Dke(clamp((this.pxW - 44) / 90, 0, 1));
-      const pScale = this.pose.scale || 1;
-      const zCur = overlayViewZoom(this.ovKind, pScale);
-      const zPrev = overlayViewZoom(this.ovPrev, pScale);
-      const zoom = 1 + (zCur * mix + zPrev * (1 - mix) - 1) * yl * shrink;
-      const half = VIEW_HALF / zoom;
-      this.svg.setAttribute("viewBox", `${(VIEW_MID - half).toFixed(2)} ${(VIEW_MID - half).toFixed(2)} ${(half * 2).toFixed(2)} ${(half * 2).toFixed(2)}`);
-
-      const morphT = clamp(this.eyeMorph.x, 0, 1);
-      const polys = this._currentPolys(morphT);
-      const cr = this.eyeTopology ? relRot(this.pose, this.poseHome) : null;
-      const overlayLive = yl > 0.001 || Math.abs(this.overlayTurn.t - this.overlayTurn.x) > 0.01;
-      let cyl = overlayLive ? this.overlayTurn.x : null;
-      if (ex.turn != null) cyl = (cyl ?? 0) + ex.turn;
-      const ringHint = morphing || turned ? liveRing : null;
-      const steadyGaze = this.gazeState === "front" || this.gazeState === "sleeping";
-      const hasPtr = !steadyGaze && !!(this.gazeTarget || (this.followPointer && this.pointerRaw));
-      this.eyesG.setAttribute(
-        "transform",
-        Math.abs(this.faceRoll) > 0.01
-          ? `rotate(${this.faceRoll.toFixed(2)} ${R} ${R})`
-          : ""
-      );
-      EY.paintEyes({
-        now,
-        polys,
-        morphT,
-        shape,
-        face,
-        faceTune: this.faceTune,
-        uniformEyes: this.uniformEyes,
-        eyeScaleProp: this.eyeScaleProp,
-        blinkX: this.blink.x,
-        eyeBoostX: this.eyeScale.x,
-        gazeX: this.gazeX.x,
-        gazeY: this.gazeY.x,
-        winkAt: this.winkAt,
-        winkEye: this.winkEye,
-        turn: cyl,
-        cr,
-        pointer: hasPtr ? this.pointer : null,
-        notifyX: this.notify.x,
-        overlayX: this.overlay.x,
-        eyeEls: this.eyeEls,
-        badgeEl: this.badge,
-        badgeColor: this.badgeColor,
-        Re: R,
-        G9e: geo.G9e,
-        VJt: geo.VJt,
-        extras: ex,
-        eyeLids: this.eyeLids,
-        steadyGaze,
-        ringHint,
-        badgeRing: restRing,
-        top: faceTop,
-        bottom: faceBottom,
-        emphasisBlend: this.emphasisBlend,
-      });
-
-      const hum = clamp(this.humDots.x, 0, 1);
-      if (hum > 0.01) {
-        for (let i = 0; i < 2; i++) {
-          const el = this.fx.parts[3 + i];
-          if (!el) continue;
-          const Gn = this.ovSpin * 0.85 + i * Math.PI;
-          const Ti = shape.radius * 1.3;
-          const Ui = Math.cos(Gn);
-          const Si = 0.55 + 0.45 * clamp((Ui + 1) / 2, 0, 1);
-          el.style.display = "";
-          el.setAttribute("cx", (R + Ti * Math.sin(Gn)).toFixed(1));
-          el.setAttribute("cy", (R - Ti * 0.38 * Math.cos(Gn) - 8).toFixed(1));
-          el.setAttribute("r", (7.5 * Si * hum).toFixed(2));
-          el.setAttribute("opacity", ((0.3 + 0.7 * Si) * hum).toFixed(3));
-        }
-      }
-    }
   }
 
   g.GrokCharacter = GrokCharacter;
@@ -989,6 +889,6 @@
     faceTune: FACE_TUNE,
     pose: POSE,
     poseHome: POSE_HOME,
-    overlays: FX.MAP,
+    effects: g.GROK_PRESETS.EFFECTS,
   };
 })(window);

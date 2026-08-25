@@ -1,4 +1,4 @@
-/* L4 — playlists, blink, login wrap, springs. Symbols: g1e VBe w_t cSe rnt int ant ont snt. */
+/* 眼形播放列表、眨眼节奏、弹簧参数和视图配置。 */
 (function (g) {
   const GROUPS = [
     { label: "Lifecycle", states: ["sleeping", "dreaming", "waking", "idle", "listening", "thinking", "searching", "working"] },
@@ -72,10 +72,10 @@
     gazeY: [13, 1],
     notify: [9, 0.55],
     humDots: [6, 1],
-    overlay: [14, 1],
-    overlayMix: [11, 1],
+    visual: [14, 1],
+    visualMix: [11, 1],
     shape: [10, 1],
-    overlayTurn: [14, 1],
+    formTurn: [14, 1],
     spinTurn: [6.2, 1],
   };
 
@@ -92,12 +92,12 @@
   const VIEW = { minX: -15, minY: -15, width: 259, height: 259 };
   const VIEW_HALF = VIEW.width / 2;
   const VIEW_MID = VIEW.minX + VIEW_HALF;
-  const OVERLAY_ZOOM = {
+  const CAMERA_ZOOM = {
     dots: 1.5, orbit: 1.14, radar: 1.14, gather: 1.15,
     wave: 1.42, send: 1.12, receive: 1.12, dock: 1.3, ball: 1.22,
     whirl: 1.45, pencil: 1.18, bang: 1.28, standby: 1.75,
   };
-  const overlayViewZoom = (kind, scale) => (kind == null ? 1 : Math.max(OVERLAY_ZOOM[kind] / Math.max(scale, 1), 1));
+  const cameraZoomFor = (kind, scale) => (kind == null ? 1 : Math.max(CAMERA_ZOOM[kind] / Math.max(scale, 1), 1));
 
   // Source G_t / MNe / Y_t — login ink. Live $_t uses --fg = ink.flat ?? MNe(color).
   const INK = {
@@ -130,7 +130,7 @@
     SPRINGS, FACE_TUNE, POSE, POSE_HOME, UNIFORM_EYES,
     WINK_STATES,
     SHAPE_ZOOM, VIEW_SCALE, shapeZoom, poseScale, shapeEyeScale,
-    VIEW, VIEW_HALF, VIEW_MID, OVERLAY_ZOOM, overlayViewZoom,
+    VIEW, VIEW_HALF, VIEW_MID, CAMERA_ZOOM, cameraZoomFor,
     INK, INK_ANGLE, inkFg, inkCss, EYE_BG,
   };
 })(window);

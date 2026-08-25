@@ -40,55 +40,9 @@
   ]);
   const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 
-  const scene = (pose, expression = pose, effect = pose, gaze = expression) =>
-    Object.freeze({ pose, expression, effect, gaze });
-  const SCENES = Object.freeze({
-    spawning: scene("spawning"),
-    waking: scene("waking"),
-    idle: scene("idle", "idle", null, "idle"),
-    sleeping: scene("sleeping"),
-    drowsy: scene("drowsy", "drowsy", null, "drowsy"),
-    dreaming: scene("dreaming", "sleeping", null, "sleeping"),
-    stretching: scene("stretching", "drowsy", null, "idle"),
-    startled: scene("startled", "startled", null, "startled"),
-    quizzical: scene("quizzical", "quizzical", null, "front"),
-    dragging: scene("dragging"),
-    frontAttention: scene("listening", "curious", null, "front"),
-    sleepyCurious: scene("curious", "drowsy", null, "drowsy"),
-    bored: scene("bored", "bored", null, "bored"),
-    playful: scene("playful", "playful", null, "playful"),
-    jumping: scene("playful", "happy", null, "playful"),
-    gazeListening: scene("idle", "listening", null, "listening"),
-    gazeSearching: scene("idle", "idle", null, "searching"),
-    gazeCurious: scene("idle", "curious", null, "curious"),
-    listening: scene("listening", "listening", null, "listening"),
-    curious: scene("curious", "curious", null, "curious"),
-    thinking: scene("thinking", "thinking", null, "thinking"),
-    deepThinking: scene("thinking", "curious", "thinking", "thinking"),
-    humming: scene("humming", "thinking", "humming", "thinking"),
-    radar: scene("thinking", "searching", "radar", "searching"),
-    searching: scene("searching", "searching", null, "searching"),
-    coding: scene("working", "working", "writing", "working"),
-    reviewing: scene("thinking", "searching", null, "working"),
-    terminalTyping: scene("working", "working", null, "working"),
-    loading: scene("working", "working", "loading", "working"),
-    receiving: scene("working", "curious", "receiving", "searching"),
-    consulting: scene("thinking", "curious", "orbit", "thinking"),
-    tooling: scene("working", "working", "orbit", "working"),
-    replying: scene("listening", "listening", "dictating", "listening"),
-    sending: scene("working", "happy", "sending", "notifying"),
-    alerting: scene("alerting"),
-    notifying: scene("notifying"),
-    happy: scene("happy", "happy", null, "happy"),
-    quickHappy: scene("happy", "winking", null, "happy"),
-    shy: scene("shy", "shy", null, "shy"),
-    surprised: scene("surprised", "surprised", null, "surprised"),
-    confused: scene("confused", "confused", null, "confused"),
-    angry: scene("angry", "angry", null, "angry"),
-    proud: scene("proud", "proud", null, "proud"),
-    celebrate: scene("celebrate"),
-    sad: scene("sad", "sad", null, "sad"),
-  });
+  const PRESETS = g.GROK_PRESETS;
+  const SEQUENCES = g.GROK_SEQUENCES;
+  const SCENES = PRESETS.scenes;
 
   function create(options) {
     const doc = options.document || document;
@@ -177,13 +131,13 @@
     }
 
     function withDetails(base, details) {
-      return Object.freeze({ ...base, ...details });
+      return PRESETS.withDetails(base, details);
     }
 
     function setScene(nextScene) {
       if (currentScene === nextScene) return;
       currentScene = nextScene;
-      if (!pointer || !interaction?.visualOnly) character.setScene(nextScene, { resetEyes: false });
+      if (!pointer || !interaction?.visualOnly) character.setPreset(nextScene, { resetEyes: false });
     }
 
     function setGazeTarget(target) {
@@ -191,13 +145,9 @@
     }
 
     function withReaction(reactionScene) {
-      const effect = currentScene.effect;
-      return Object.freeze({
-        pose: reactionScene.pose,
-        expression: reactionScene.expression,
-        effect,
-        gaze: reactionScene.gaze,
-      });
+      const base = currentScene.preset ?? currentScene;
+      const reaction = reactionScene.preset ?? reactionScene;
+      return PRESETS.replaceChannels(base, reaction, ["motion", "face", "expression", "gaze"]);
     }
 
     function chooseAccent(activityName, candidates) {
@@ -787,7 +737,7 @@
           else enterActivity();
           return;
         }
-        setScene(step.keepEffect ? withReaction(step.scene) : step.scene);
+        setScene(step.preserveEffect ? withReaction(step.scene) : step.scene);
         if (step.wink) character.winkOnce();
         index += 1;
         scheduleTransition("cue", step.duration, play);
@@ -798,59 +748,8 @@
     function playCueNow(cue) {
       interaction = null;
       setGazeTarget(null);
-      switch (cue) {
-        case "engage":
-          playCueSequence(cue, [
-            { scene: SCENES.listening, duration: 350 },
-            { scene: SCENES.curious, duration: 650 },
-          ]);
-          break;
-        case "reply_sent":
-          playCueSequence(cue, [{ scene: SCENES.sending, duration: 850 }]);
-          break;
-        case "approval_granted":
-          playCueSequence(cue, [{ scene: SCENES.happy, duration: 900, keepEffect: true }]);
-          break;
-        case "approval_denied":
-          playCueSequence(cue, [{ scene: SCENES.shy, duration: 900, keepEffect: true }]);
-          break;
-        case "error_first":
-          playCueSequence(cue, [{ scene: SCENES.surprised, duration: 650, keepEffect: true }]);
-          break;
-        case "error_repeated":
-          playCueSequence(cue, [{ scene: SCENES.confused, duration: 1200, keepEffect: true }]);
-          break;
-        case "error_stubborn":
-          playCueSequence(cue, [{ scene: SCENES.angry, duration: 1400, keepEffect: true }]);
-          break;
-        case "completed_quick":
-          playCueSequence(cue, [
-            { scene: SCENES.quickHappy, duration: 900, wink: true },
-            { scene: SCENES.notifying, duration: 1500 },
-          ]);
-          break;
-        case "completed_normal":
-          playCueSequence(cue, [
-            { scene: SCENES.proud, duration: 1500 },
-            { scene: SCENES.notifying, duration: 2200 },
-          ]);
-          break;
-        case "completed_hard":
-          playCueSequence(cue, [
-            { scene: SCENES.celebrate, duration: 2500 },
-            { scene: SCENES.notifying, duration: 2500 },
-          ]);
-          break;
-        case "run_failed":
-          playCueSequence(cue, [
-            { scene: SCENES.sad, duration: 1800 },
-            { scene: SCENES.notifying, duration: 1600 },
-          ]);
-          break;
-        case "run_aborted":
-          playCueSequence(cue, [{ scene: SCENES.surprised, duration: 600 }]);
-          break;
-      }
+      const steps = SEQUENCES.cues[cue];
+      if (steps) playCueSequence(cue, steps);
     }
 
     function cuePriority(cue) {
@@ -1024,11 +923,7 @@
     function startFullWake() {
       resetIdleSession(now());
       const direction = chooseDirection("wake-stretch");
-      playSequence("interaction-wake", [
-        { scene: withDetails(SCENES.stretching, { direction }), duration: 3500 },
-        { scene: SCENES.playful, duration: 700 },
-        { scene: SCENES.happy, duration: 900 },
-      ], finishFullWake);
+      playSequence("interaction-wake", SEQUENCES.fullWake(direction), finishFullWake);
     }
 
     function finishQuizzical() {
@@ -1095,7 +990,7 @@
 
       if (PROTECTED_MODES.has(mode)) {
         interaction = { idle: false, moved: false, stage: "dragging", visualOnly: true };
-        character.setScene(SCENES.dragging, { resetEyes: false });
+        character.setPreset(SCENES.dragging, { resetEyes: false });
         return;
       }
 
@@ -1151,7 +1046,7 @@
       if (!interaction) return;
       if (interaction.visualOnly) {
         interaction = null;
-        character.setScene(currentScene, { resetEyes: false });
+        character.setPreset(currentScene, { resetEyes: false });
         return;
       }
       if (!interaction.idle || activity !== "idle") {
