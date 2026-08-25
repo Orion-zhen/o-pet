@@ -28,6 +28,7 @@ async-channel = "*"
 csscolorparser = "*"
 directories = "*"
 interprocess = "*"
+png = "*"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 toml = "*"
@@ -42,6 +43,7 @@ windows = { version = "*", features = ["Win32_Foundation", "Win32_Storage_FileSy
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 tao = { version = "*", default-features = false, features = ["rwh_06"] }
+tray-icon = { version = "*", default-features = false }
 wry = { version = "*", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -55,6 +57,7 @@ winresource = "*"
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { package = "gtk4", version = "*", features = ["v4_10"] }
 gtk4-layer-shell = "*"
+ksni = { version = "*", features = ["blocking"] }
 webkit6 = "*"
 
 [dev-dependencies]

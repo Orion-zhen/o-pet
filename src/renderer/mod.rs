@@ -33,6 +33,8 @@ mod tests {
         }
         assert!(!PAGE.contains("<script src="));
         assert!(!PAGE.contains("<link "));
+        assert!(PAGE.contains("contextmenu"));
+        assert!(PAGE.contains("event.preventDefault()"));
         assert!(PAGE.ends_with("</html>\n"));
     }
 }

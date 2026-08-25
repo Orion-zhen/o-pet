@@ -7,6 +7,7 @@ use std::{
 use super::position::{PlacementStore, WindowPlacement};
 use gtk::{gdk, prelude::*};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use ksni::blocking::TrayMethods;
 use o_pet::{
     coordinator::{Activity, AnimationUpdate},
     ipc,
@@ -40,6 +41,95 @@ enum DragMessage {
     Start,
     Move { dx: f64, dy: f64 },
     End,
+}
+
+#[derive(Clone, Copy)]
+enum TrayCommand {
+    Show,
+    Hide,
+    Quit,
+}
+
+struct SystemTray {
+    commands: async_channel::Sender<TrayCommand>,
+    icon: ksni::Icon,
+}
+
+impl SystemTray {
+    fn new(commands: async_channel::Sender<TrayCommand>) -> io::Result<Self> {
+        let mut icon = super::icon::load_tray_icon()?;
+        for pixel in icon.pixels.chunks_exact_mut(4) {
+            pixel.rotate_right(1);
+        }
+        Ok(Self {
+            commands,
+            icon: ksni::Icon {
+                width: i32::try_from(icon.width)
+                    .map_err(|_| io::Error::other("托盘图标宽度超出范围"))?,
+                height: i32::try_from(icon.height)
+                    .map_err(|_| io::Error::other("托盘图标高度超出范围"))?,
+                data: icon.pixels,
+            },
+        })
+    }
+
+    fn send(&self, command: TrayCommand) {
+        let _ = self.commands.try_send(command);
+    }
+}
+
+impl ksni::Tray for SystemTray {
+    fn id(&self) -> String {
+        "o-pet".into()
+    }
+
+    fn title(&self) -> String {
+        "o-pet".into()
+    }
+
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        vec![self.icon.clone()]
+    }
+
+    fn activate(&mut self, _x: i32, _y: i32) {
+        self.send(TrayCommand::Show);
+    }
+
+    fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
+        use ksni::menu::StandardItem;
+
+        let show = self.commands.clone();
+        let hide = self.commands.clone();
+        let quit = self.commands.clone();
+        vec![
+            StandardItem {
+                label: "显示桌宠".into(),
+                activate: Box::new(move |_| {
+                    let _ = show.try_send(TrayCommand::Show);
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "隐藏桌宠".into(),
+                activate: Box::new(move |_| {
+                    let _ = hide.try_send(TrayCommand::Hide);
+                }),
+                ..Default::default()
+            }
+            .into(),
+            ksni::MenuItem::Separator,
+            StandardItem {
+                label: "退出".into(),
+                icon_name: "application-exit".into(),
+                activate: Box::new(move |_| {
+                    let _ = quit.try_send(TrayCommand::Quit);
+                }),
+                ..Default::default()
+            }
+            .into(),
+        ]
+    }
 }
 
 #[derive(Default)]
@@ -116,6 +206,19 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
         }
     };
 
+    let (tray_sender, tray_receiver) = async_channel::unbounded();
+    let tray = match SystemTray::new(tray_sender).and_then(|tray| {
+        tray.spawn()
+            .map_err(|error| io::Error::other(error.to_string()))
+    }) {
+        Ok(tray) => tray,
+        Err(error) => {
+            eprintln!("无法创建 o-pet 托盘图标: {error}");
+            server.shutdown();
+            return 1.into();
+        }
+    };
+
     let application = gtk::Application::builder()
         .application_id("works.earendil.o-pet")
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
@@ -129,13 +232,19 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
             application.quit();
             return;
         }
-        if let Err(error) = build_window(application, receiver.clone(), &config) {
+        if let Err(error) = build_window(
+            application,
+            receiver.clone(),
+            tray_receiver.clone(),
+            &config,
+        ) {
             eprintln!("无法创建 o-pet Linux 窗口: {error}");
             failed.set(true);
             application.quit();
         }
     });
     let exit_code = application.run();
+    tray.shutdown().wait();
     server.shutdown();
     if startup_failed.get() {
         1.into()
@@ -147,6 +256,7 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
 fn build_window(
     application: &gtk::Application,
     updates: async_channel::Receiver<AnimationUpdate>,
+    tray_commands: async_channel::Receiver<TrayCommand>,
     config: &Config,
 ) -> io::Result<()> {
     let display = gdk::Display::default()
@@ -246,6 +356,26 @@ fn build_window(
         }
     });
     web_view.load_html(crate::renderer::PAGE, None);
+
+    let weak_window = window.downgrade();
+    let weak_application = application.downgrade();
+    gtk::glib::MainContext::default().spawn_local(async move {
+        while let Ok(command) = tray_commands.recv().await {
+            let Some(window) = weak_window.upgrade() else {
+                break;
+            };
+            match command {
+                TrayCommand::Show => window.present(),
+                TrayCommand::Hide => window.set_visible(false),
+                TrayCommand::Quit => {
+                    if let Some(application) = weak_application.upgrade() {
+                        application.quit();
+                    }
+                    break;
+                }
+            }
+        }
+    });
 
     connect_monitor_changes(&window, &web_view, monitor_model, Rc::clone(&placement));
     let saved_placement = Rc::clone(&placement);

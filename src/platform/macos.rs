@@ -22,8 +22,8 @@ pub(crate) fn run() {
 }
 
 pub(super) fn configure_event_loop<T: 'static>(event_loop: &mut EventLoop<T>) {
-    event_loop.set_activation_policy(ActivationPolicy::Accessory);
-    event_loop.set_dock_visibility(false);
+    event_loop.set_activation_policy(ActivationPolicy::Regular);
+    event_loop.set_dock_visibility(true);
     event_loop.set_activate_ignoring_other_apps(false);
 }
 

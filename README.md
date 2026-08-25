@@ -27,18 +27,20 @@ npm run renderer:test
 cargo run --release
 ```
 
+启动后，macOS 会在 Dock 中显示应用图标。macOS、Windows 和 Linux 均会创建托盘图标。托盘菜单可显示或隐藏桌宠，也可退出应用。Linux 桌面环境必须提供 StatusNotifierItem 主机才能显示托盘图标。
+
 ## 应用打包
 
 在 macOS 或 Windows 上安装仓库使用的 `cargo-packager` 版本：
 
 ```bash
-cargo install cargo-packager --version 0.11.8 --locked
+cargo install cargo-packager
 ```
 
 在目标平台执行发布打包：
 
 ```bash
-cargo packager --release
+cargo package-app
 ```
 
 macOS 默认生成 `.app` 和 `.dmg`，Windows 默认生成 NSIS `.exe` 安装程序。产物位于 `dist/`。应用包和 Windows 可执行文件均使用 `assets/app-icon-256.png` 对应的平台图标。
@@ -52,7 +54,7 @@ Linux、macOS 和 Windows 均读取 `~/.config/o-pet/config.toml`。配置文件
 ```toml
 size = 240
 shape = "blob"
-body_color = "#000000"
+body_color = "#808080"
 eye_color = "#f3efe6"
 ```
 

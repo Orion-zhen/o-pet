@@ -9,10 +9,14 @@ use crate::config::{Config, RendererPreferences};
 use serde::Deserialize;
 use tao::{
     dpi::{LogicalSize, PhysicalPosition},
-    event::{Event, WindowEvent},
+    event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
     monitor::MonitorHandle,
     window::{Window, WindowBuilder},
+};
+use tray_icon::{
+    Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 use wry::{NewWindowResponse, PermissionResponse, WebView, WebViewBuilder};
 
@@ -40,7 +44,52 @@ Object.defineProperty(window, "oPetNative", {
 #[derive(Debug)]
 enum UserEvent {
     Animation(AnimationUpdate),
+    Menu(MenuEvent),
     Page(PageMessage),
+    Tray(TrayIconEvent),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayCommand {
+    Show,
+    Hide,
+    Quit,
+}
+
+const SHOW_MENU_ID: &str = "o-pet.show";
+const HIDE_MENU_ID: &str = "o-pet.hide";
+const QUIT_MENU_ID: &str = "o-pet.quit";
+
+struct SystemTray {
+    _icon: TrayIcon,
+}
+
+impl SystemTray {
+    fn new() -> Result<Self, Box<dyn Error>> {
+        let show = MenuItem::with_id(SHOW_MENU_ID, "显示桌宠", true, None);
+        let hide = MenuItem::with_id(HIDE_MENU_ID, "隐藏桌宠", true, None);
+        let separator = PredefinedMenuItem::separator();
+        let quit = MenuItem::with_id(QUIT_MENU_ID, "退出", true, None);
+        let menu = Menu::with_items(&[&show, &hide, &separator, &quit])?;
+        let icon = super::icon::load_tray_icon()?;
+        let icon = Icon::from_rgba(icon.pixels, icon.width, icon.height)?;
+        let icon = TrayIconBuilder::new()
+            .with_tooltip("o-pet")
+            .with_icon(icon)
+            .with_menu(Box::new(menu))
+            .with_menu_on_left_click(false)
+            .build()?;
+        Ok(Self { _icon: icon })
+    }
+
+    fn command(event: &MenuEvent) -> Option<TrayCommand> {
+        match event.id.as_ref() {
+            SHOW_MENU_ID => Some(TrayCommand::Show),
+            HIDE_MENU_ID => Some(TrayCommand::Hide),
+            QUIT_MENU_ID => Some(TrayCommand::Quit),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,19 +190,54 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
         .build(&window)?;
     window.set_visible(true);
 
+    let tray_proxy = event_loop.create_proxy();
+    TrayIconEvent::set_event_handler(Some(move |event| {
+        let _ = tray_proxy.send_event(UserEvent::Tray(event));
+    }));
+    let menu_proxy = event_loop.create_proxy();
+    MenuEvent::set_event_handler(Some(move |event| {
+        let _ = menu_proxy.send_event(UserEvent::Menu(event));
+    }));
+
     let preferences = config.renderer;
     let mut latest_update = AnimationUpdate::steady(Activity::Idle);
     let mut page_ready = false;
     let mut server = Some(server);
+    let mut tray = None;
     event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            Event::NewEvents(StartCause::Init) => match SystemTray::new() {
+                Ok(system_tray) => tray = Some(system_tray),
+                Err(error) => {
+                    eprintln!("无法创建 o-pet 托盘图标: {error}");
+                    *control_flow = ControlFlow::Exit;
+                }
+            },
             Event::UserEvent(UserEvent::Animation(update)) => {
                 latest_update = update;
                 if page_ready {
                     send_update(&webview, update);
                 }
             }
+            Event::UserEvent(UserEvent::Menu(event)) => match SystemTray::command(&event) {
+                Some(TrayCommand::Show) => window.set_visible(true),
+                Some(TrayCommand::Hide) => window.set_visible(false),
+                Some(TrayCommand::Quit) => *control_flow = ControlFlow::Exit,
+                None => {}
+            },
+            Event::UserEvent(UserEvent::Tray(
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+                | TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                },
+            )) => window.set_visible(true),
+            Event::UserEvent(UserEvent::Tray(_)) => {}
             Event::UserEvent(UserEvent::Page(PageMessage::Ready)) => {
                 page_ready = true;
                 send_preferences(&webview, &preferences);
@@ -169,6 +253,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
                 phase: DragPhase::Move | DragPhase::End,
             })) => {}
+            Event::Reopen { .. } => window.set_visible(true),
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
@@ -197,6 +282,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
                         .to_physical(scale_factor);
             }
             Event::LoopDestroyed => {
+                tray.take();
                 update_and_save_placement(&window, target, &mut placement, &store);
                 if let Some(server) = server.take() {
                     server.shutdown();
@@ -364,4 +450,22 @@ fn send_update(webview: &WebView, update: AnimationUpdate) {
 
 fn is_internal_document_uri(uri: &str) -> bool {
     uri == "about:blank" || uri.starts_with("about:blank#")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HIDE_MENU_ID, QUIT_MENU_ID, SHOW_MENU_ID, SystemTray, TrayCommand};
+    use tray_icon::menu::MenuEvent;
+
+    #[test]
+    fn maps_tray_menu_events_to_window_commands() {
+        for (id, expected) in [
+            (SHOW_MENU_ID, Some(TrayCommand::Show)),
+            (HIDE_MENU_ID, Some(TrayCommand::Hide)),
+            (QUIT_MENU_ID, Some(TrayCommand::Quit)),
+            ("other", None),
+        ] {
+            assert_eq!(SystemTray::command(&MenuEvent { id: id.into() }), expected);
+        }
+    }
 }

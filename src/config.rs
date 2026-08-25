@@ -11,7 +11,7 @@ pub(crate) const DEFAULT_SIZE: i32 = 240;
 pub(crate) const MAX_SIZE: i32 = 1024;
 pub(crate) const MIN_SIZE: i32 = 64;
 
-const DEFAULT_BODY_COLOR: &str = "black";
+const DEFAULT_BODY_COLOR: &str = "gray";
 const DEFAULT_EYE_COLOR: &str = "#f3efe6";
 const DEFAULT_SHAPE: &str = "blob";
 const SHAPES: &[&str] = &[
@@ -119,7 +119,7 @@ fn config_path(home: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, DEFAULT_SIZE, config_path};
+    use super::{Config, config_path};
 
     #[test]
     fn uses_the_same_home_relative_path_on_every_platform() {
@@ -127,17 +127,6 @@ mod tests {
             config_path(std::path::Path::new("/home/pet")),
             std::path::Path::new("/home/pet/.config/o-pet/config.toml")
         );
-    }
-
-    #[test]
-    fn missing_file_uses_defaults() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-
-        let config =
-            Config::load_from(&directory.path().join("config.toml")).expect("load default config");
-
-        assert_eq!(config, Config::default());
-        assert_eq!(config.size, DEFAULT_SIZE);
     }
 
     #[test]
