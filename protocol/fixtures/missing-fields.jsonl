@@ -1,0 +1,5 @@
+{"type":"hello","clientId":"client-1"}
+{"type":"event"}
+{"type":"event","event":{"type":"tool_started","toolCallId":"tool-1"}}
+{"type":"event","event":{"type":"tool_finished","toolCallId":"tool-1","toolName":"read","outcome":"aborted"}}
+{"clientId":"client-1","sessionId":"session-1"}

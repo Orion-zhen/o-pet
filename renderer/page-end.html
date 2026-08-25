@@ -1,0 +1,16 @@
+
+		window.oPetRenderer = window.OPetRenderer.create({
+			svg: document.getElementById("pet"),
+			postDrag(message) {
+				window.oPetNative.postDrag(message);
+			},
+		});
+		window.oPet = Object.freeze({
+			setPreferences: window.oPetRenderer.setPreferences,
+			update: window.oPetRenderer.update,
+		});
+		window.oPetNative.ready?.();
+		window.addEventListener("pagehide", window.oPetRenderer.destroy, { once: true });
+	</script>
+</body>
+</html>

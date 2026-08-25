@@ -1,0 +1,11 @@
+{"type":"hello","clientId":"client-1","sessionId":"session-1"}
+{"type":"event","event":{"type":"thinking_started"}}
+{"type":"event","event":{"type":"reply_started"}}
+{"type":"event","event":{"type":"tool_observed","toolName":"skill"}}
+{"type":"event","event":{"type":"tool_started","toolCallId":"tool-1","toolName":"skill"}}
+{"type":"event","event":{"type":"tool_progressed","toolCallId":"tool-1"}}
+{"type":"event","event":{"type":"approval_requested","toolCallId":"tool-1","toolName":"skill"}}
+{"type":"event","event":{"type":"approval_resolved","toolCallId":"tool-1","outcome":"approved"}}
+{"type":"event","event":{"type":"reply_finished"}}
+{"type":"event","event":{"type":"agent_settled","outcome":"success","durationMs":1200}}
+{"type":"goodbye"}
