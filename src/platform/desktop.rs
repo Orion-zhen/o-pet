@@ -449,13 +449,36 @@ fn send_update(webview: &WebView, update: AnimationUpdate) {
 }
 
 fn is_internal_document_uri(uri: &str) -> bool {
-    uri == "about:blank" || uri.starts_with("about:blank#")
+    uri == "about:blank"
+        || uri.starts_with("about:blank#")
+        || uri.starts_with("data:text/html;charset=utf-8;base64,")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HIDE_MENU_ID, QUIT_MENU_ID, SHOW_MENU_ID, SystemTray, TrayCommand};
+    use super::{
+        HIDE_MENU_ID, QUIT_MENU_ID, SHOW_MENU_ID, SystemTray, TrayCommand, is_internal_document_uri,
+    };
     use tray_icon::menu::MenuEvent;
+
+    #[test]
+    fn permits_renderer_document_and_rejects_external_navigation() {
+        for uri in [
+            "about:blank",
+            "about:blank#renderer",
+            "data:text/html;charset=utf-8;base64,PGh0bWw+PC9odG1sPg==",
+        ] {
+            assert!(is_internal_document_uri(uri), "应允许 {uri}");
+        }
+        for uri in [
+            "https://example.com",
+            "data:text/html,<html></html>",
+            "data:text/plain;charset=utf-8;base64,dGVzdA==",
+            "about:srcdoc",
+        ] {
+            assert!(!is_internal_document_uri(uri), "应拒绝 {uri}");
+        }
+    }
 
     #[test]
     fn maps_tray_menu_events_to_window_commands() {

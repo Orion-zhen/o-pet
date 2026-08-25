@@ -14,10 +14,11 @@ use std::{
 };
 
 use interprocess::local_socket::{
-    GenericFilePath, ListenerOptions, Stream, ToFsName as _,
-    traits::{Listener as _, Stream as _},
+    GenericFilePath, ListenerOptions, Stream, ToFsName as _, traits::Listener as _,
 };
 
+#[cfg(unix)]
+use interprocess::local_socket::traits::Stream as _;
 #[cfg(unix)]
 use std::fs;
 
@@ -28,6 +29,7 @@ pub use endpoint::resolve_endpoint;
 pub use protocol::MAX_LINE_BYTES;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
+#[cfg(unix)]
 const READ_TIMEOUT: Duration = Duration::from_millis(50);
 
 type AnimationSink = Arc<dyn Fn(AnimationUpdate) + Send + Sync>;
@@ -223,6 +225,7 @@ fn read_connection(
     coordinator: Arc<Mutex<Coordinator>>,
     sink: AnimationSink,
 ) {
+    #[cfg(unix)]
     if let Err(error) = stream.set_recv_timeout(Some(READ_TIMEOUT)) {
         eprintln!("o-pet 设置 IPC 读取超时失败: {error}");
         disconnect(connection_id, &coordinator, &sink);
@@ -233,6 +236,15 @@ fn read_connection(
     let mut decoder = LineDecoder::default();
     let mut buffer = [0_u8; 8192];
     'connection: while !shutdown.load(Ordering::Acquire) {
+        #[cfg(windows)]
+        match windows_stream_has_input(&stream) {
+            Ok(true) => {}
+            Ok(false) => {
+                thread::sleep(POLL_INTERVAL);
+                continue;
+            }
+            Err(_) => break,
+        }
         match stream.read(&mut buffer) {
             Ok(0) => break,
             Ok(length) => {
@@ -270,6 +282,20 @@ fn read_connection(
         }
     }
     disconnect(connection_id, &coordinator, &sink);
+}
+
+#[cfg(windows)]
+fn windows_stream_has_input(stream: &Stream) -> io::Result<bool> {
+    use std::os::windows::io::AsRawHandle;
+
+    use windows::Win32::{Foundation::HANDLE, System::Pipes::PeekNamedPipe};
+
+    let Stream::NamedPipe(stream) = stream;
+    let handle = HANDLE(stream.inner().as_raw_handle());
+    let mut available = 0;
+    unsafe { PeekNamedPipe(handle, None, 0, None, Some(&mut available), None) }
+        .map_err(io::Error::other)?;
+    Ok(available != 0)
 }
 
 fn disconnect(connection_id: u64, coordinator: &Mutex<Coordinator>, sink: &AnimationSink) {
