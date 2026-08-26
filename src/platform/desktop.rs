@@ -480,7 +480,7 @@ fn renderer_response(path: &str) -> Response<std::borrow::Cow<'static, [u8]>> {
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header(CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(std::borrow::Cow::Borrowed(b"not found"))
+            .body(std::borrow::Cow::Borrowed(&b"not found"[..]))
             .expect("固定的渲染资源错误响应必须有效"),
     }
 }
