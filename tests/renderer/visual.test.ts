@@ -10,6 +10,21 @@ const SHAPES = [
 	"gem", "crystal", "wedge", "shield", "dome", "arch", "cloud", "teardrop", "leaf",
 ];
 
+function elementsByTag(root: SvgElementStub, tag: string): SvgElementStub[] {
+	const matches: SvgElementStub[] = [];
+	const visit = (element: SvgElementStub): void => {
+		if (element.tag === tag) matches.push(element);
+		for (const child of element.children) visit(child);
+	};
+	visit(root);
+	return matches;
+}
+
+const solidPaint = (color: string): { color: string; kind: string } => ({
+	kind: "solid",
+	color,
+});
+
 function visibleBodyColoredDots(root: SvgElementStub): SvgElementStub[] {
 	const dots: SvgElementStub[] = [];
 	const visit = (element: SvgElementStub): void => {
@@ -38,6 +53,69 @@ function visibleBodyColoredRings(root: SvgElementStub): SvgElementStub[] {
 }
 
 describe("渲染器视觉运行时", () => {
+	it("用 SVG 绘制线性渐变并保留代表色", () => {
+		const harness = createVisualHarness();
+		harness.character.setInk({
+			kind: "linear",
+			angle: 90,
+			accent: "#800080",
+			stops: [
+				{ offset: 0, color: "#ff0000", opacity: 1 },
+				{ offset: 1, color: "#0000ff", opacity: 1 },
+			],
+		});
+
+		expect(harness.svg.style["--fg"]).toBe("#800080");
+		const gradients = elementsByTag(harness.svg, "linearGradient");
+		expect(gradients).toHaveLength(1);
+		const gradient = gradients[0];
+		if (gradient === undefined) throw new Error("缺少线性渐变");
+		expect(gradient.attributes.get("x1")).toBe("0%");
+		expect(gradient.attributes.get("x2")).toBe("100%");
+		expect(elementsByTag(gradient, "stop").map((stop) => Object.fromEntries(stop.attributes))).toEqual([
+			{ offset: "0%", "stop-color": "#ff0000", "stop-opacity": "1" },
+			{ offset: "100%", "stop-color": "#0000ff", "stop-opacity": "1" },
+		]);
+		const paintedBodies = elementsByTag(harness.svg, "path").filter((path) =>
+			path.attributes.get("fill")?.startsWith("url(#body-paint-")
+		);
+		expect(paintedBodies).toHaveLength(1);
+		harness.character.destroy();
+	});
+
+	it("为径向渐变创建随身体同步的模糊光晕，并能切回单色", () => {
+		const harness = createVisualHarness();
+		harness.character.setInk({
+			kind: "radial",
+			center: [0.35, 0.3],
+			accent: "#a855f7",
+			blur: 10,
+			stops: [
+				{ offset: 0, color: "#ffffff", opacity: 1 },
+				{ offset: 1, color: "#a855f7", opacity: 0 },
+			],
+		});
+		harness.frame(16);
+
+		const gradients = elementsByTag(harness.svg, "radialGradient");
+		expect(gradients).toHaveLength(1);
+		expect(gradients[0]?.attributes.get("cx")).toBe("35%");
+		expect(gradients[0]?.attributes.get("cy")).toBe("30%");
+		expect(elementsByTag(harness.svg, "feGaussianBlur")[0]?.attributes.get("stdDeviation")).toBe("10");
+		const glow = elementsByTag(harness.svg, "path").find((path) => path.attributes.has("filter"));
+		const body = elementsByTag(harness.svg, "path").find((path) =>
+			path !== glow && path.attributes.get("fill")?.startsWith("url(#body-paint-")
+		);
+		expect(glow?.attributes.get("d")).toBe(body?.attributes.get("d"));
+
+		harness.character.setInk(solidPaint("#123456"));
+		expect(elementsByTag(harness.svg, "radialGradient")).toHaveLength(0);
+		expect(elementsByTag(harness.svg, "feGaussianBlur")).toHaveLength(0);
+		expect(elementsByTag(harness.svg, "path").filter((path) => path.attributes.has("filter"))).toHaveLength(0);
+		expect(elementsByTag(harness.svg, "path").some((path) => path.attributes.get("fill") === "#123456")).toBe(true);
+		harness.character.destroy();
+	});
+
 	it.each([
 		["spawning", 3],
 		["deepThinking", 2],
@@ -47,7 +125,7 @@ describe("渲染器视觉运行时", () => {
 		const harness = createVisualHarness();
 		const preset = harness.presets.scenes[scene];
 		if (preset === undefined) throw new Error(`缺少 ${scene} 场景`);
-		harness.character.setInk("#789abc");
+		harness.character.setInk(solidPaint("#789abc"));
 		harness.character.playPreset(preset);
 		for (let time = 16; time <= 1504; time += 16) harness.frame(time);
 
@@ -59,7 +137,7 @@ describe("渲染器视觉运行时", () => {
 
 	it("radar 的扩散波纹显式使用身体颜色", () => {
 		const harness = createVisualHarness();
-		harness.character.setInk("#789abc");
+		harness.character.setInk(solidPaint("#789abc"));
 		harness.character.playPreset(harness.presets.scenes.radar);
 		for (let time = 16; time <= 1504; time += 16) harness.frame(time);
 

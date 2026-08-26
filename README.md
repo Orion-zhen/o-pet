@@ -83,16 +83,37 @@ macOS 默认生成 `.app` 和 `.dmg`，Windows 默认生成 NSIS `.exe` 安装�
 Linux、macOS 和 Windows 均读取 `~/.config/o-pet/config.toml`。配置文件不存在时使用默认值。
 
 ```toml
-size = 240
+size = 120
 shape = "blob"
-body_color = "#808080"
-eye_color = "#f3efe6"
+body_color = "radial-gradient(circle at 28% 20% in oklch, oklch(72% 0.015 85), oklch(59% 0.022 75), oklch(47% 0.028 65))"
+body_blur = 4
+eye_color = "#fffaf0"
 ```
 
 - `size`：正方形窗口的边长，取值范围为 `64` 到 `1024`。
 - `shape`：桌宠形状。支持 `blob`、`pebble`、`bean`、`egg`、`squircle`、`tablet`、`capsule`、`cylinder`、`hex`、`gem`、`crystal`、`wedge`、`shield`、`dome`、`arch`、`cloud`、`teardrop` 和 `leaf`。
-- `body_color`：身体颜色，支持十六进制、CSS 颜色名、`rgb()` 和 `hsl()` 等 CSS 颜色格式。
-- `eye_color`：眼睛颜色，格式与 `body_color` 相同。
+- `body_color`：身体颜色，支持单色、线性渐变和径向渐变。单色和渐变色标支持十六进制、CSS 颜色名、`rgb()`、`hsl()` 和 `oklch()` 等 CSS 颜色格式。
+- `body_blur`：径向渐变的光晕模糊量，取值为 `0` 到 `32` 之间的整数。径向渐变省略该字段时使用 `4`。该值仅可与 `radial-gradient` 一起使用。
+- `eye_color`：眼睛颜色，仅支持 `body_color` 可用的单色格式。
+
+`body_color` 支持以下渐变语法：
+
+```toml
+# 默认使用 sRGB 插值
+body_color = "linear-gradient(135deg, #ff6b6b, #4d96ff)"
+
+# 第三个颜色是位于 50% 的桥梁色
+body_color = "linear-gradient(135deg, #ff6b6b, #ffd166, #4d96ff)"
+
+# 使用 OKLCH 插值，色标本身也可以使用 oklch() 格式
+body_color = "linear-gradient(135deg in oklch, oklch(70% 0.2 20), oklch(65% 0.2 260))"
+
+# 径向渐变支持调整圆心，并可添加光晕
+body_color = "radial-gradient(circle at 35% 30%, #ffffff, #a855f7, transparent)"
+body_blur = 10
+```
+
+渐变只支持两个或三个等距色标。线性渐变角度使用 `deg`。径向渐变圆心使用 `circle at <x>% <y>%`，省略时默认为 `50% 50%`。两种渐变均可在头部追加 `in oklch`。暂不支持自定义色标位置、方向关键字、椭圆、重复渐变和锥形渐变。
 
 所有字段均可省略。配置格式、字段名或字段值无效时，桌宠会输出错误并终止启动。`size` 会覆盖内部保存的窗口尺寸，但不会清除已保存的显示器和窗口位置。
 

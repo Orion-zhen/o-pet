@@ -27,7 +27,7 @@ class CharacterStub {
 	readonly scenes: CharacterScene[];
 	readonly shapes: string[] = [];
 	readonly colors: Array<[string, string | undefined]> = [];
-	readonly bodyColors: string[] = [];
+	readonly bodyColors: unknown[] = [];
 	readonly eyeColors: string[] = [];
 	readonly paused: boolean[] = [];
 	readonly reducedMotion: boolean[] = [];
@@ -128,8 +128,8 @@ class CharacterStub {
 		this.colors.push([color, scheme]);
 	}
 
-	setInk(color: string): void {
-		this.bodyColors.push(color);
+	setInk(paint: unknown): void {
+		this.bodyColors.push(paint);
 	}
 
 	setEyeColor(color: string): void {

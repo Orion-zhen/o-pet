@@ -29,6 +29,13 @@
       clip.appendChild(character.clipPath);
       defs.appendChild(clip);
       character.svg.appendChild(defs);
+      character.defs = defs;
+      character.document = doc;
+      character.paintId = `body-paint-${clipId}`;
+      character.blurId = `body-blur-${clipId}`;
+      character.paintServer = null;
+      character.blurFilter = null;
+      character.bodyGlow = null;
 
       character.group = doc.createElementNS(ns, "g");
       character.body = doc.createElementNS(ns, "path");
@@ -187,6 +194,7 @@
         );
       }
       character.body.setAttribute("d", bodyD);
+      if (character.bodyGlow) character.bodyGlow.setAttribute("d", bodyD);
       character.clipPath.setAttribute("d", bodyD);
 
       character.fx.paint(
@@ -295,6 +303,102 @@
       }
     }
 
+    function percent(value) {
+      return `${(value * 100).toFixed(3).replace(/\.?0+$/, "")}%`;
+    }
+
+    function clearBodyPaint(view) {
+      view.paintServer?.remove();
+      view.blurFilter?.remove();
+      view.bodyGlow?.remove();
+      view.paintServer = null;
+      view.blurFilter = null;
+      view.bodyGlow = null;
+      view.body.setAttribute("fill", "var(--fg, #000)");
+    }
+
+    function appendStops(view, gradient, stops) {
+      for (const stop of stops) {
+        const element = view.document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "stop",
+        );
+        element.setAttribute("offset", percent(stop.offset));
+        element.setAttribute("stop-color", stop.color);
+        element.setAttribute("stop-opacity", String(stop.opacity));
+        gradient.appendChild(element);
+      }
+    }
+
+    function setBodyPaint(view, paint) {
+      clearBodyPaint(view);
+      if (paint == null) return;
+      if (paint.kind === "solid") {
+        view.body.setAttribute("fill", paint.color);
+        return;
+      }
+
+      const ns = "http://www.w3.org/2000/svg";
+      const gradient = view.document.createElementNS(
+        ns,
+        paint.kind === "linear" ? "linearGradient" : "radialGradient",
+      );
+      gradient.setAttribute("id", view.paintId);
+      gradient.setAttribute("gradientUnits", "objectBoundingBox");
+      gradient.setAttribute("color-interpolation", "sRGB");
+      if (paint.kind === "linear") {
+        const radians = (paint.angle * Math.PI) / 180;
+        const dx = Math.sin(radians);
+        const dy = -Math.cos(radians);
+        const extent = (Math.abs(dx) + Math.abs(dy)) / 2;
+        gradient.setAttribute("x1", percent(0.5 - dx * extent));
+        gradient.setAttribute("y1", percent(0.5 - dy * extent));
+        gradient.setAttribute("x2", percent(0.5 + dx * extent));
+        gradient.setAttribute("y2", percent(0.5 + dy * extent));
+      } else if (paint.kind === "radial") {
+        const [cx, cy] = paint.center;
+        const radius = Math.max(
+          Math.hypot(cx, cy),
+          Math.hypot(1 - cx, cy),
+          Math.hypot(cx, 1 - cy),
+          Math.hypot(1 - cx, 1 - cy),
+        );
+        gradient.setAttribute("cx", percent(cx));
+        gradient.setAttribute("cy", percent(cy));
+        gradient.setAttribute("r", percent(radius));
+      } else {
+        throw new Error(`未知身体绘制类型: ${paint.kind}`);
+      }
+      appendStops(view, gradient, paint.stops);
+      view.defs.appendChild(gradient);
+      view.paintServer = gradient;
+      const fill = `url(#${view.paintId})`;
+      view.body.setAttribute("fill", fill);
+
+      if (paint.kind !== "radial" || paint.blur <= 0) return;
+      const filter = view.document.createElementNS(ns, "filter");
+      filter.setAttribute("id", view.blurId);
+      filter.setAttribute("filterUnits", "userSpaceOnUse");
+      filter.setAttribute("x", "-100");
+      filter.setAttribute("y", "-100");
+      filter.setAttribute("width", "460");
+      filter.setAttribute("height", "460");
+      const blur = view.document.createElementNS(ns, "feGaussianBlur");
+      blur.setAttribute("stdDeviation", String(paint.blur));
+      filter.appendChild(blur);
+      view.defs.appendChild(filter);
+      view.blurFilter = filter;
+
+      const glow = view.document.createElementNS(ns, "path");
+      const bodyPath = view.body.getAttribute("d");
+      if (bodyPath !== null) glow.setAttribute("d", bodyPath);
+      glow.setAttribute("fill", fill);
+      glow.setAttribute("filter", `url(#${view.blurId})`);
+      glow.setAttribute("pointer-events", "none");
+      view.group.insertBefore(glow, view.body);
+      view.bodyGlow = glow;
+    }
+
     function createRenderer(options) {
       const view = {
         svg: options.svg,
@@ -324,6 +428,7 @@
           view.fx.hideAll();
           view.fx.resetInk();
         },
+        setBodyPaint: (paint) => setBodyPaint(view, paint),
         setReduceMotion: (value) => view.particles.setReduceMotion(value),
         setStyle(name, value) {
           view.svg.style.setProperty(name, value);

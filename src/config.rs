@@ -7,12 +7,16 @@ use csscolorparser::parse;
 use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 
+use self::body_paint::{BodyPaint, parse_body_paint};
+
+mod body_paint;
+
 pub(crate) const DEFAULT_SIZE: i32 = 120;
 pub(crate) const MAX_SIZE: i32 = 1024;
 pub(crate) const MIN_SIZE: i32 = 64;
 
-const DEFAULT_BODY_COLOR: &str = "gray";
-const DEFAULT_EYE_COLOR: &str = "#f3efe6";
+const DEFAULT_BODY_COLOR: &str = "radial-gradient(circle at 28% 20% in oklch, oklch(72% 0.015 85), oklch(59% 0.022 75), oklch(47% 0.028 65))";
+const DEFAULT_EYE_COLOR: &str = "#fffaf0";
 const DEFAULT_SHAPE: &str = "blob";
 const SHAPES: &[&str] = &[
     "blob", "pebble", "bean", "egg", "squircle", "tablet", "capsule", "cylinder", "hex", "gem",
@@ -28,7 +32,7 @@ pub(crate) struct Config {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub(crate) struct RendererPreferences {
     pub shape: String,
-    pub body_color: String,
+    pub body_color: BodyPaint,
     pub eye_color: String,
 }
 
@@ -38,6 +42,7 @@ struct RawConfig {
     size: i32,
     shape: String,
     body_color: String,
+    body_blur: Option<u8>,
     eye_color: String,
 }
 
@@ -47,6 +52,7 @@ impl Default for RawConfig {
             size: DEFAULT_SIZE,
             shape: DEFAULT_SHAPE.into(),
             body_color: DEFAULT_BODY_COLOR.into(),
+            body_blur: None,
             eye_color: DEFAULT_EYE_COLOR.into(),
         }
     }
@@ -96,7 +102,8 @@ impl RawConfig {
             size: self.size,
             renderer: RendererPreferences {
                 shape: self.shape,
-                body_color: parse_color("body_color", &self.body_color)?,
+                body_color: parse_body_paint(&self.body_color, self.body_blur)
+                    .map_err(|error| invalid_value(format!("body_color 无效: {error}")))?,
                 eye_color: parse_color("eye_color", &self.eye_color)?,
             },
         })
@@ -130,6 +137,18 @@ mod tests {
     }
 
     #[test]
+    fn uses_warm_gray_radial_gradient_by_default() {
+        let config = Config::default();
+        let paint = serde_json::to_value(config.renderer.body_color).expect("serialize body paint");
+
+        assert_eq!(paint["kind"], "radial");
+        assert_eq!(paint["center"], serde_json::json!([0.28, 0.2]));
+        assert_eq!(paint["blur"], 4.0);
+        assert_eq!(paint["stops"].as_array().expect("stops").len(), 33);
+        assert_eq!(config.renderer.eye_color, "#fffaf0");
+    }
+
+    #[test]
     fn loads_partial_config_and_normalizes_css_colors() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("config.toml");
@@ -143,16 +162,38 @@ mod tests {
 
         assert_eq!(config.size, 320);
         assert_eq!(config.renderer.shape, "cloud");
-        assert_eq!(config.renderer.body_color, "#ff0000");
+        assert_eq!(
+            serde_json::to_value(&config.renderer.body_color).expect("serialize body paint"),
+            serde_json::json!({ "kind": "solid", "color": "#ff0000" })
+        );
         assert_eq!(config.renderer.eye_color, "#000080");
         assert_eq!(
             serde_json::to_value(&config.renderer).expect("serialize renderer preferences"),
             serde_json::json!({
                 "shape": "cloud",
-                "body_color": "#ff0000",
+                "body_color": { "kind": "solid", "color": "#ff0000" },
                 "eye_color": "#000080",
             })
         );
+    }
+
+    #[test]
+    fn loads_gradient_body_color_and_blur() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "body_color = \"radial-gradient(circle at 35% 30%, #ffffff, #a855f7, transparent)\"\nbody_blur = 10\n",
+        )
+        .expect("write gradient config");
+
+        let config = Config::load_from(&path).expect("load gradient config");
+        let paint = serde_json::to_value(config.renderer.body_color).expect("serialize body paint");
+
+        assert_eq!(paint["kind"], "radial");
+        assert_eq!(paint["center"], serde_json::json!([0.35, 0.3]));
+        assert_eq!(paint["blur"], 10.0);
+        assert_eq!(paint["stops"].as_array().expect("stops").len(), 3);
     }
 
     #[test]
@@ -162,6 +203,7 @@ mod tests {
             ("shape = \"round\"\n", "shape 必须"),
             ("body_color = \"not a color\"\n", "body_color"),
             ("eye_color = \"not a color\"\n", "eye_color"),
+            ("body_blur = 33\n", "body_blur"),
             ("unknown = true\n", "unknown field"),
         ] {
             let directory = tempfile::tempdir().expect("temporary directory");

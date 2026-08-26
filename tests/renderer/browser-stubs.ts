@@ -115,6 +115,14 @@ export class SvgElementStub {
 		return child;
 	}
 
+	insertBefore(child: SvgElementStub, reference: SvgElementStub): SvgElementStub {
+		const index = this.children.indexOf(reference);
+		if (index < 0) throw new Error("参考节点不是当前节点的子节点");
+		child.parent = this;
+		this.children.splice(index, 0, child);
+		return child;
+	}
+
 	setAttribute(name: string, value: string): void {
 		this.attributes.set(name, value);
 		if (name === "id") this.id = value;

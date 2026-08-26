@@ -97,7 +97,7 @@
         this.badgeColor = opts.badgeColor || "var(--gb-badge, #1d9bf0)";
         this.sizePx = opts.sizePx || null;
         this.eyeColor = opts.eyeColor || null;
-        this.inkFlat = opts.inkFlat || null;
+        this.bodyPaint = opts.bodyPaint || null;
 
         this.spin = spring(0);
         this.tx = spring(0);
@@ -280,8 +280,13 @@
       setColor(id, scheme) {
         this.colorId = id;
         if (scheme) this.scheme = scheme;
-        if (this.inkFlat) {
-          this.renderer.setStyle("--fg", this.inkFlat);
+        if (this.bodyPaint) {
+          this.renderer.setStyle(
+            "--fg",
+            this.bodyPaint.kind === "solid"
+              ? this.bodyPaint.color
+              : this.bodyPaint.accent,
+          );
         } else if (this.loginWrap) {
           this.renderer.setStyle("--fg", inkFg(id));
         } else {
@@ -291,12 +296,13 @@
             this.scheme === "dark" ? pal.dark : pal.light,
           );
         }
+        this.renderer.setBodyPaint(this.bodyPaint);
         this.renderer.setStyle("--ink", inkCss(id));
         this.renderer.setStyle("--bg", this.eyeColor || EYE_BG);
       }
 
-      setInk(flat) {
-        this.inkFlat = flat || null;
+      setInk(paint) {
+        this.bodyPaint = paint;
         this.setColor(this.colorId);
       }
 

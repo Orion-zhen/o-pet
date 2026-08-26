@@ -289,8 +289,9 @@ describe("渲染器组合根行为", () => {
 
 	it("应用受支持的身形、配色和动态偏好", () => {
 		const { api, character, motion } = createHarness();
+		const bodyPaint = { kind: "solid", color: "#123456" };
 		expect(api.setPreferences({
-			body_color: "#123456",
+			body_color: bodyPaint,
 			color: "blue",
 			eye_color: "#abcdef",
 			followPointer: false,
@@ -300,10 +301,24 @@ describe("渲染器组合根行为", () => {
 		})).toBe(true);
 		expect(character.shapes).toEqual(["cloud"]);
 		expect(character.colors).toEqual([["blue", undefined], ["blue", "dark"]]);
-		expect(character.bodyColors).toEqual(["#123456"]);
+		expect(character.bodyColors).toEqual([bodyPaint]);
 		expect(character.eyeColors).toEqual(["#abcdef"]);
 		expect(character.followingPointer).toEqual([false]);
 		expect(character.reducedMotion.at(-1)).toBe(true);
+
+		api.setPreferences({
+			body_color: {
+				kind: "radial",
+				center: [0.5, 0.5],
+				accent: "#000000",
+				blur: 33,
+				stops: [
+					{ offset: 0, color: "#000000", opacity: 1 },
+					{ offset: 1, color: "#ffffff", opacity: 1 },
+				],
+			},
+		});
+		expect(character.bodyColors).toEqual([bodyPaint]);
 
 		api.setPreferences({ reduceMotion: false });
 		motion.matches = true;
