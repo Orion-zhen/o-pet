@@ -18,6 +18,10 @@
 
     const randomDelay = ([minimum, maximum]) =>
       minimum + Math.floor(random() * (maximum - minimum + 1));
+    const HAPPY_SCENE_MS = 1400;
+    const PLAYFUL_SCENE_MS = 3000;
+    const PROUD_SCENE_MS = 2200;
+    const SEARCHING_SCENE_MS = 3500;
 
     function chooseDirection(key) {
       let direction = random() < 0.5 ? -1 : 1;
@@ -54,14 +58,16 @@
             found
               ? {
                   scene: withDetails(scenes.playful, { direction }),
-                  duration: 600,
+                  duration: PLAYFUL_SCENE_MS,
                   pounce: { direction, strength: 0.4 },
                 }
               : {
                   scene: withDetails(scenes.idle, { direction }),
                   duration: 700,
                 },
-            ...(found ? [{ scene: scenes.happy, duration: 900 }] : []),
+            ...(found
+              ? [{ scene: scenes.happy, duration: HAPPY_SCENE_MS }]
+              : []),
           ];
         },
       },
@@ -80,13 +86,13 @@
             },
             {
               scene: withDetails(scenes.searching, { direction }),
-              duration: 1500,
+              duration: SEARCHING_SCENE_MS,
             },
             {
               scene: withDetails(scenes.searching, { direction: -direction }),
               duration: 650,
             },
-            { scene: scenes.proud, duration: 1000 },
+            { scene: scenes.proud, duration: PROUD_SCENE_MS },
           ];
         },
       },
@@ -110,7 +116,7 @@
             },
             {
               scene: withDetails(scenes.playful, { direction }),
-              duration: 500,
+              duration: PLAYFUL_SCENE_MS,
             },
             {
               scene: withDetails(scenes.jumping, { direction }),
@@ -118,7 +124,7 @@
               pounce: { direction, strength: 1 },
             },
             ...(success
-              ? [{ scene: scenes.happy, duration: 900 }]
+              ? [{ scene: scenes.happy, duration: HAPPY_SCENE_MS }]
               : [
                   { scene: scenes.surprised, duration: 600 },
                   { scene: scenes.shy, duration: 900 },
@@ -135,14 +141,14 @@
         build() {
           const failed = random() < 0.18;
           return [
-            { scene: scenes.playful, duration: 700 },
+            { scene: scenes.playful, duration: PLAYFUL_SCENE_MS },
             { scene: scenes.jumping, duration: 1800, hop: true },
             ...(failed
               ? [
                   { scene: scenes.surprised, duration: 650 },
                   { scene: scenes.shy, duration: 800 },
                 ]
-              : [{ scene: scenes.happy, duration: 1000 }]),
+              : [{ scene: scenes.happy, duration: HAPPY_SCENE_MS }]),
           ];
         },
       },
@@ -157,7 +163,7 @@
           const result = random();
           const ending =
             result < 0.62
-              ? [{ scene: scenes.proud, duration: 1100 }]
+              ? [{ scene: scenes.proud, duration: PROUD_SCENE_MS }]
               : result < 0.96
                 ? [{ scene: scenes.shy, duration: 1300 }]
                 : [
@@ -171,11 +177,11 @@
           return [
             {
               scene: withDetails(scenes.playful, { direction: -direction }),
-              duration: 500,
+              duration: PLAYFUL_SCENE_MS,
             },
             {
               scene: withDetails(scenes.playful, { direction }),
-              duration: 1400,
+              duration: PLAYFUL_SCENE_MS,
             },
             ...ending,
           ];
@@ -194,7 +200,7 @@
               scene: withDetails(scenes.stretching, { direction }),
               duration: 3500,
             },
-            { scene: scenes.happy, duration: 800 },
+            { scene: scenes.happy, duration: HAPPY_SCENE_MS },
           ];
         },
       },
@@ -224,7 +230,7 @@
         build: () => [
           { scene: scenes.bored, duration: 1600 },
           { scene: scenes.curious, duration: 900 },
-          { scene: scenes.playful, duration: 800 },
+          { scene: scenes.playful, duration: PLAYFUL_SCENE_MS },
         ],
       },
       {
@@ -252,7 +258,7 @@
               scene: withDetails(scenes.stretching, { direction }),
               duration: 3500,
             },
-            { scene: scenes.happy, duration: 700 },
+            { scene: scenes.happy, duration: HAPPY_SCENE_MS },
             { scene: scenes.drowsy, duration: 900 },
           ];
         },
@@ -281,7 +287,7 @@
         weight: 1,
         cooldown: 70_000,
         build: () => [
-          { scene: scenes.playful, duration: 900 },
+          { scene: scenes.playful, duration: PLAYFUL_SCENE_MS },
           { scene: scenes.drowsy, duration: 1300 },
         ],
       },

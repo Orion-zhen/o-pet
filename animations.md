@@ -342,18 +342,18 @@ Cue 导演维护一个当前 Cue 和一个待播放槽位。
 
 | 片段 | 深度 | 能量、权重、冷却 | 动画链和分支 |
 | --- | --- | --- | --- |
-| `notice` | `awake`、`relaxed` | 低，5，20 s | `gazeListening` 250 ms -> `listening` 450 ms -> `curious` 900 ms。35% 进入 `playful` 600 ms 并轻扑，再进入 `happy` 900 ms。其余进入 `idle` 700 ms |
-| `patrol` | `awake`、`relaxed` | 低，3，30 s | `gazeSearching` 250 ms -> 同方向 `searching` 1500 ms -> 反方向 `searching` 650 ms -> `proud` 1000 ms |
-| `pounce` | `awake` | 中，2，35 s | `gazeCurious` 250 ms -> `curious` 400 ms -> `playful` 500 ms -> `jumping` 1050 ms 并全力扑。55% 成功后 `happy` 900 ms，否则 `surprised` 600 ms -> `shy` 900 ms |
-| `bounce-practice` | `awake` | 高，1.4，75 s | `playful` 700 ms -> `jumping` 1800 ms 并跳跃。18% 失败后 `surprised` 650 ms -> `shy` 800 ms，否则 `happy` 1000 ms |
-| `spin-challenge` | `awake` | 高，0.9，90 s | 反方向 `playful` 500 ms -> 正方向 `playful` 1400 ms 并旋转 1 圈。62% 进入 `proud` 1100 ms，34% 进入 `shy` 1300 ms，4% 进入 `quickHappy` 900 ms 并眨眼和轻扑 |
-| `stretch` | `awake`、`relaxed` | 中，2，40 s | `stretching` 3500 ms -> `happy` 800 ms |
+| `notice` | `awake`、`relaxed` | 低，5，20 s | `gazeListening` 250 ms -> `listening` 450 ms -> `curious` 900 ms。35% 进入 `playful` 3000 ms 并轻扑，再进入 `happy` 1400 ms。其余进入 `idle` 700 ms |
+| `patrol` | `awake`、`relaxed` | 低，3，30 s | `gazeSearching` 250 ms -> 同方向 `searching` 3500 ms -> 反方向 `searching` 650 ms -> `proud` 2200 ms |
+| `pounce` | `awake` | 中，2，35 s | `gazeCurious` 250 ms -> `curious` 400 ms -> `playful` 3000 ms -> `jumping` 1050 ms 并全力扑。55% 成功后 `happy` 1400 ms，否则 `surprised` 600 ms -> `shy` 900 ms |
+| `bounce-practice` | `awake` | 高，1.4，75 s | `playful` 3000 ms -> `jumping` 1800 ms 并跳跃。18% 失败后 `surprised` 650 ms -> `shy` 800 ms，否则 `happy` 1400 ms |
+| `spin-challenge` | `awake` | 高，0.9，90 s | 反方向 `playful` 3000 ms -> 正方向 `playful` 3000 ms 并旋转 1 圈。62% 进入 `proud` 2200 ms，34% 进入 `shy` 1300 ms，4% 进入 `quickHappy` 900 ms 并眨眼和轻扑 |
+| `stretch` | `awake`、`relaxed` | 中，2，40 s | `stretching` 3500 ms -> `happy` 1400 ms |
 | `quiet-observe` | `relaxed` | 低，4，18 s | `listening` 1200 ms -> `idle` 900 ms |
-| `self-entertain` | `relaxed` | 中，2.2，40 s | `bored` 1600 ms -> `curious` 900 ms -> `playful` 800 ms |
+| `self-entertain` | `relaxed` | 中，2.2，40 s | `bored` 1600 ms -> `curious` 900 ms -> `playful` 3000 ms |
 | `sleepy-nod` | `drowsy` | 低，5，20 s | `drowsy` 2200 ms -> `surprised` 600 ms -> `drowsy` 900 ms |
-| `resist-sleep` | `drowsy` | 中，2.2，40 s | `stretching` 3500 ms -> `happy` 700 ms -> `drowsy` 900 ms |
+| `resist-sleep` | `drowsy` | 中，2.2，40 s | `stretching` 3500 ms -> `happy` 1400 ms -> `drowsy` 900 ms |
 | `half-awake` | `drowsy` | 低，2.5，30 s | `sleepyCurious` 1600 ms -> `drowsy` 1000 ms |
-| `sleepy-play` | `drowsy` | 中，1，70 s | `playful` 900 ms -> `drowsy` 1300 ms |
+| `sleepy-play` | `drowsy` | 中，1，70 s | `playful` 3000 ms -> `drowsy` 1300 ms |
 | `dream-float` | `sleeping` | 低，1，35 s | `dreaming(float)` 6–10 s |
 | `dream-curl` | `sleeping` | 低，1，35 s | `dreaming(curl)` 6–10 s，带交替方向 |
 | `dream-twitch` | `sleeping` | 低，1，35 s | `dreaming(twitch)` 6–10 s |

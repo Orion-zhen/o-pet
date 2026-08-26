@@ -27,6 +27,8 @@ interface VisualCharacter {
 	readonly hopAt: number;
 	readonly motionAt: number;
 	readonly particleAt: number;
+	readonly spinTurn: { t: number; v: number; x: number } | null;
+	readonly trick: { kind: string } | null;
 	playPreset(preset: unknown): void;
 	setPaused(value: boolean): void;
 	setPreset(preset: unknown, options?: { resetEyes?: boolean }): void;

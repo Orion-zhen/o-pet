@@ -62,6 +62,8 @@ describe("渲染器视觉运行时", () => {
 		moving.character.playPreset(moving.presets.scenes.happy);
 		for (let time = 16; time <= 160; time += 16) moving.frame(time);
 		expect(moving.character.hopAt).toBeGreaterThanOrEqual(120);
+		for (let time = 176; time <= 1392; time += 16) moving.frame(time);
+		expect(moving.character.hopAt).toBe(-1);
 		moving.character.destroy();
 
 		const reduced = createVisualHarness();
@@ -77,6 +79,19 @@ describe("渲染器视觉运行时", () => {
 		harness.character.playPreset(harness.presets.scenes.playful);
 		for (let time = 16; time <= 400; time += 16) harness.frame(time);
 		expect(hasLiveTrail(harness.svg)).toBe(true);
+		for (let time = 416; time <= 2992; time += 16) harness.frame(time);
+		expect(harness.character.spinTurn).toBeNull();
+		expect(harness.character.trick).toBeNull();
+		harness.character.destroy();
+	});
+
+	it("searching 的最长首次旋转会在空闲场景窗口内完成", () => {
+		const harness = createVisualHarness(() => 1);
+		harness.character.playPreset(harness.presets.scenes.searching);
+		for (let time = 16; time <= 1600; time += 16) harness.frame(time);
+		expect(harness.character.spinTurn).not.toBeNull();
+		for (let time = 1616; time <= 3488; time += 16) harness.frame(time);
+		expect(harness.character.spinTurn).toBeNull();
 		harness.character.destroy();
 	});
 

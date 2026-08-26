@@ -82,6 +82,20 @@ describe("渲染器组合根行为", () => {
 		expect(latest(character).pose).toBe("listening");
 	});
 
+	it("空闲片段为旋转和弹跳保留完整时间窗口", () => {
+		const { character, clock } = createHarness();
+		clock.advance(8600);
+		expect(latest(character).pose).toBe("playful");
+		clock.advance(2999);
+		expect(latest(character).pose).toBe("playful");
+		clock.advance(1);
+		expect(latest(character).pose).toBe("happy");
+		clock.advance(1399);
+		expect(latest(character).pose).toBe("happy");
+		clock.advance(1);
+		expect(latest(character).pose).toBe("idle");
+	});
+
 	it("最近空闲片段不会短时间重复", () => {
 		const { character, clock } = createHarness();
 		clock.advance(60_000);
@@ -94,8 +108,8 @@ describe("渲染器组合根行为", () => {
 	it("空闲阶段边界由每次会话的随机序列决定", () => {
 		const early = createHarness(false, () => 0);
 		const late = createHarness(false, () => 0.999);
-		early.clock.advance(4 * 60_000);
-		late.clock.advance(4 * 60_000);
+		early.clock.advance(4 * 60_000 + 10_000);
+		late.clock.advance(4 * 60_000 + 10_000);
 		expect(early.character.scenes.some((value) => value.pose === "drowsy")).toBe(true);
 		expect(late.character.scenes.some((value) => value.pose === "drowsy")).toBe(false);
 	});
@@ -322,7 +336,7 @@ describe("渲染器组合根行为", () => {
 
 	it("困倦阶段仍会播放片段并回到 drowsy", () => {
 		const { character, clock } = createHarness();
-		clock.advance(4 * 60_000);
+		clock.advance(4 * 60_000 + 500);
 		expect(latest(character).pose).toBe("drowsy");
 		const sceneCount = character.scenes.length;
 		clock.advance(30_000);
@@ -364,7 +378,7 @@ describe("渲染器组合根行为", () => {
 
 	it("困倦片段被 Agent 打断时不依赖当前画面判断唤醒", () => {
 		const { api, character, clock } = createHarness();
-		clock.advance(4 * 60_000 + 12_200);
+		clock.advance(4 * 60_000 + 13_000);
 		expect(latest(character).pose).toBe("surprised");
 		api.update({ activity: "thinking" });
 		clock.advance(350);
