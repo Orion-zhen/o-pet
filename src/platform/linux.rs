@@ -46,10 +46,11 @@ enum DragMessage {
     End,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TrayCommand {
     Show,
     Hide,
+    Reload,
     Quit,
 }
 
@@ -103,6 +104,7 @@ impl ksni::Tray for SystemTray {
 
         let show = self.commands.clone();
         let hide = self.commands.clone();
+        let reload = self.commands.clone();
         let quit = self.commands.clone();
         vec![
             StandardItem {
@@ -117,6 +119,15 @@ impl ksni::Tray for SystemTray {
                 label: "隐藏桌宠".into(),
                 activate: Box::new(move |_| {
                     let _ = hide.try_send(TrayCommand::Hide);
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "重新加载桌宠".into(),
+                icon_name: "view-refresh".into(),
+                activate: Box::new(move |_| {
+                    let _ = reload.try_send(TrayCommand::Reload);
                 }),
                 ..Default::default()
             }
@@ -356,23 +367,25 @@ fn build_window(
     web_view.set_background_color(&gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
     let current_activity = Rc::new(Cell::new(Activity::Idle));
     let page_loaded = Rc::new(Cell::new(false));
+    let preferences = Rc::new(RefCell::new(config.renderer.clone()));
     connect_ready_handler(
         &content_manager,
         &web_view,
-        config.renderer.clone(),
+        Rc::clone(&preferences),
         action,
         Rc::clone(&current_activity),
         Rc::clone(&page_loaded),
     );
 
     let weak_web_view = web_view.downgrade();
+    let updates_page_loaded = Rc::clone(&page_loaded);
     gtk::glib::MainContext::default().spawn_local(async move {
         while let Ok(update) = updates.recv().await {
             current_activity.set(update.activity);
             let Some(web_view) = weak_web_view.upgrade() else {
                 break;
             };
-            if page_loaded.get() {
+            if updates_page_loaded.get() {
                 send_update(&web_view, update);
             }
         }
@@ -380,7 +393,13 @@ fn build_window(
     web_view.load_uri(crate::renderer::DOCUMENT_URL);
 
     let weak_window = window.downgrade();
+    let weak_web_view = web_view.downgrade();
     let weak_application = application.downgrade();
+    let reload_monitor_model = monitor_model.clone();
+    let reload_placement = Rc::clone(&placement);
+    let reload_store = Rc::clone(&store);
+    let reload_preferences = Rc::clone(&preferences);
+    let reload_page_loaded = Rc::clone(&page_loaded);
     gtk::glib::MainContext::default().spawn_local(async move {
         while let Ok(command) = tray_commands.recv().await {
             let Some(window) = weak_window.upgrade() else {
@@ -389,6 +408,22 @@ fn build_window(
             match command {
                 TrayCommand::Show => window.present(),
                 TrayCommand::Hide => window.set_visible(false),
+                TrayCommand::Reload => match reload_config(
+                    &window,
+                    &reload_monitor_model,
+                    &reload_placement,
+                    &reload_store,
+                ) {
+                    Ok(reloaded) => {
+                        *reload_preferences.borrow_mut() = reloaded;
+                        if reload_page_loaded.get()
+                            && let Some(web_view) = weak_web_view.upgrade()
+                        {
+                            send_preferences(&web_view, &reload_preferences.borrow());
+                        }
+                    }
+                    Err(error) => eprintln!("无法重新加载 o-pet 配置: {error}"),
+                },
                 TrayCommand::Quit => {
                     if let Some(application) = weak_application.upgrade() {
                         application.quit();
@@ -407,6 +442,33 @@ fn build_window(
     window.set_child(Some(&web_view));
     window.present();
     Ok(())
+}
+
+fn reload_config(
+    window: &gtk::ApplicationWindow,
+    monitor_model: &gtk::gio::ListModel,
+    placement: &RefCell<WindowPlacement>,
+    store: &PlacementStore,
+) -> io::Result<RendererPreferences> {
+    let config = Config::load()?;
+    let monitors = available_monitors(monitor_model);
+    let primary = monitors
+        .first()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "没有可用的显示器"))?;
+    let mut placement = placement.borrow_mut();
+    let selected = monitors
+        .iter()
+        .find(|choice| choice.id == placement.monitor)
+        .unwrap_or(primary);
+    let geometry = selected.monitor.geometry();
+
+    placement.monitor.clone_from(&selected.id);
+    placement.resize_square(config.size, geometry.width(), geometry.height());
+    window.set_monitor(Some(&selected.monitor));
+    apply_placement(window, &placement);
+    save_placement(store, &placement);
+
+    Ok(config.renderer)
 }
 
 fn restrict_navigation(web_view: &WebView) {
@@ -524,7 +586,7 @@ fn configure_layer_surface(
 fn connect_ready_handler(
     content_manager: &UserContentManager,
     web_view: &WebView,
-    preferences: RendererPreferences,
+    preferences: Rc<RefCell<RendererPreferences>>,
     action: Option<String>,
     current_activity: Rc<Cell<Activity>>,
     page_loaded: Rc<Cell<bool>>,
@@ -538,7 +600,7 @@ fn connect_ready_handler(
             return;
         };
         page_loaded.set(true);
-        send_preferences(&web_view, &preferences);
+        send_preferences(&web_view, &preferences.borrow());
         if let Some(action) = &action {
             show_action(&web_view, action);
         } else {
@@ -688,7 +750,32 @@ fn save_placement(store: &PlacementStore, placement: &WindowPlacement) {
 
 #[cfg(test)]
 mod tests {
-    use super::{DragSession, is_internal_document_uri};
+    use super::{DragSession, SystemTray, TrayCommand, is_internal_document_uri};
+
+    #[test]
+    fn tray_menu_can_request_a_reload() {
+        let (commands, receiver) = async_channel::unbounded();
+        let mut tray = SystemTray {
+            commands,
+            icon: ksni::Icon {
+                width: 1,
+                height: 1,
+                data: vec![0, 0, 0, 0],
+            },
+        };
+
+        for item in ksni::Tray::menu(&tray) {
+            if let ksni::MenuItem::Standard(item) = item {
+                (item.activate)(&mut tray);
+            }
+        }
+        let mut received = Vec::new();
+        while let Ok(command) = receiver.try_recv() {
+            received.push(command);
+        }
+
+        assert!(received.contains(&TrayCommand::Reload));
+    }
 
     #[test]
     fn only_allows_the_embedded_document_uri() {

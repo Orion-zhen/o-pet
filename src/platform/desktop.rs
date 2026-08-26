@@ -56,11 +56,13 @@ enum UserEvent {
 enum TrayCommand {
     Show,
     Hide,
+    Reload,
     Quit,
 }
 
 const SHOW_MENU_ID: &str = "o-pet.show";
 const HIDE_MENU_ID: &str = "o-pet.hide";
+const RELOAD_MENU_ID: &str = "o-pet.reload";
 const QUIT_MENU_ID: &str = "o-pet.quit";
 
 struct SystemTray {
@@ -71,9 +73,10 @@ impl SystemTray {
     fn new() -> Result<Self, Box<dyn Error>> {
         let show = MenuItem::with_id(SHOW_MENU_ID, "显示桌宠", true, None);
         let hide = MenuItem::with_id(HIDE_MENU_ID, "隐藏桌宠", true, None);
+        let reload = MenuItem::with_id(RELOAD_MENU_ID, "重新加载桌宠", true, None);
         let separator = PredefinedMenuItem::separator();
         let quit = MenuItem::with_id(QUIT_MENU_ID, "退出", true, None);
-        let menu = Menu::with_items(&[&show, &hide, &separator, &quit])?;
+        let menu = Menu::with_items(&[&show, &hide, &reload, &separator, &quit])?;
         let icon = super::icon::load_tray_icon()?;
         let icon = Icon::from_rgba(icon.pixels, icon.width, icon.height)?;
         let icon = TrayIconBuilder::new()
@@ -89,6 +92,7 @@ impl SystemTray {
         match event.id.as_ref() {
             SHOW_MENU_ID => Some(TrayCommand::Show),
             HIDE_MENU_ID => Some(TrayCommand::Hide),
+            RELOAD_MENU_ID => Some(TrayCommand::Reload),
             QUIT_MENU_ID => Some(TrayCommand::Quit),
             _ => None,
         }
@@ -211,7 +215,7 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
         let _ = menu_proxy.send_event(UserEvent::Menu(event));
     }));
 
-    let preferences = config.renderer;
+    let mut preferences = config.renderer;
     let mut latest_update = AnimationUpdate::steady(Activity::Idle);
     let mut page_ready = false;
     let mut server = server;
@@ -235,6 +239,17 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
             Event::UserEvent(UserEvent::Menu(event)) => match SystemTray::command(&event) {
                 Some(TrayCommand::Show) => window.set_visible(true),
                 Some(TrayCommand::Hide) => window.set_visible(false),
+                Some(TrayCommand::Reload) => {
+                    match reload_config(&window, target, &mut placement, &store) {
+                        Ok(reloaded) => {
+                            preferences = reloaded;
+                            if page_ready {
+                                send_preferences(&webview, &preferences);
+                            }
+                        }
+                        Err(error) => eprintln!("无法重新加载 o-pet 配置: {error}"),
+                    }
+                }
                 Some(TrayCommand::Quit) => *control_flow = ControlFlow::Exit,
                 None => {}
             },
@@ -436,6 +451,37 @@ fn reset_to_primary(
     Ok(())
 }
 
+fn reload_config(
+    window: &Window,
+    target: &EventLoopWindowTarget<UserEvent>,
+    placement: &mut WindowPlacement,
+    store: &PlacementStore,
+) -> Result<RendererPreferences, Box<dyn Error>> {
+    let config = Config::load()?;
+    let monitor = target
+        .available_monitors()
+        .find(|monitor| native::monitor_id(monitor) == placement.monitor)
+        .or_else(|| target.primary_monitor())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "没有可用的显示器"))?;
+    let monitor_id = native::monitor_id(&monitor);
+    let geometry = monitor_geometry(&monitor)?;
+    let (monitor_width, monitor_height) = geometry.logical_size();
+
+    placement.monitor = monitor_id;
+    placement.resize_square(config.size, monitor_width, monitor_height);
+    let origin = placement.physical_origin(geometry);
+    window.set_inner_size(LogicalSize::new(
+        f64::from(config.size),
+        f64::from(config.size),
+    ));
+    window.set_outer_position(PhysicalPosition::new(origin.0, origin.1));
+    if let Err(error) = store.save(placement) {
+        eprintln!("无法保存 o-pet 窗口位置: {error}");
+    }
+
+    Ok(config.renderer)
+}
+
 fn endpoint_error(endpoint: &std::path::Path, error: io::Error) -> io::Error {
     if error.kind() == io::ErrorKind::AddrInUse {
         io::Error::new(
@@ -502,7 +548,8 @@ fn is_internal_document_uri(uri: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        HIDE_MENU_ID, QUIT_MENU_ID, SHOW_MENU_ID, SystemTray, TrayCommand, is_internal_document_uri,
+        HIDE_MENU_ID, QUIT_MENU_ID, RELOAD_MENU_ID, SHOW_MENU_ID, SystemTray, TrayCommand,
+        is_internal_document_uri,
     };
     use tray_icon::menu::MenuEvent;
 
@@ -534,6 +581,7 @@ mod tests {
         for (id, expected) in [
             (SHOW_MENU_ID, Some(TrayCommand::Show)),
             (HIDE_MENU_ID, Some(TrayCommand::Hide)),
+            (RELOAD_MENU_ID, Some(TrayCommand::Reload)),
             (QUIT_MENU_ID, Some(TrayCommand::Quit)),
             ("other", None),
         ] {

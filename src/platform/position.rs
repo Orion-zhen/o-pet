@@ -75,6 +75,12 @@ impl WindowPlacement {
             .clamp(0, monitor_height.saturating_sub(self.height).max(0));
     }
 
+    pub fn resize_square(&mut self, size: i32, monitor_width: i32, monitor_height: i32) {
+        self.width = size;
+        self.height = size;
+        self.clamp_to(monitor_width, monitor_height);
+    }
+
     #[cfg(any(test, target_os = "macos", target_os = "windows"))]
     pub fn physical_origin(&self, monitor: MonitorGeometry) -> (i32, i32) {
         let occupied_width = logical_to_physical(self.width + self.right, monitor.scale_factor);
@@ -294,6 +300,24 @@ mod tests {
         let small = WindowPlacement::default_for("DP-1".into(), DEFAULT_SIZE);
         assert_eq!(small.right, DEFAULT_MARGIN);
         assert_eq!(small.bottom, DEFAULT_MARGIN);
+    }
+
+    #[test]
+    fn resize_preserves_offsets_and_clamps_them_to_the_monitor() {
+        let mut placement = WindowPlacement {
+            width: 120,
+            height: 120,
+            monitor: "DP-1".into(),
+            right: 900,
+            bottom: 500,
+        };
+
+        placement.resize_square(640, 1280, 720);
+
+        assert_eq!(placement.width, 640);
+        assert_eq!(placement.height, 640);
+        assert_eq!(placement.right, 640);
+        assert_eq!(placement.bottom, 80);
     }
 
     #[test]

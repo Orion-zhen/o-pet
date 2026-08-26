@@ -58,7 +58,7 @@ Rust 使用 `rust-embed` 将 `renderer/` 嵌入可执行文件，并通过内部
 
 `renderer/view/geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。
 
-启动后，macOS 会在 Dock 中显示应用图标。macOS、Windows 和 Linux 均会创建托盘图标。托盘菜单可显示或隐藏桌宠，也可退出应用。Linux 桌面环境必须提供 StatusNotifierItem 主机才能显示托盘图标。
+启动后，macOS 会在 Dock 中显示应用图标。macOS、Windows 和 Linux 均会创建托盘图标。托盘菜单可显示、隐藏或重新加载桌宠，也可退出应用。“重新加载桌宠”会重新读取配置并立即应用，不会重启应用或中断 IPC 服务；配置无效时保留当前状态并输出错误。Linux 桌面环境必须提供 StatusNotifierItem 主机才能显示托盘图标。
 
 ## 应用打包
 
