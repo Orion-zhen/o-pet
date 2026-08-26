@@ -10,7 +10,65 @@ const SHAPES = [
 	"gem", "crystal", "wedge", "shield", "dome", "arch", "cloud", "teardrop", "leaf",
 ];
 
+function visibleBodyColoredDots(root: SvgElementStub): SvgElementStub[] {
+	const dots: SvgElementStub[] = [];
+	const visit = (element: SvgElementStub): void => {
+		if (
+			element.attributes.get("style") === "fill:var(--fg);display:none"
+			&& element.style.display === ""
+		) dots.push(element);
+		for (const child of element.children) visit(child);
+	};
+	visit(root);
+	return dots;
+}
+
+function visibleBodyColoredRings(root: SvgElementStub): SvgElementStub[] {
+	const rings: SvgElementStub[] = [];
+	const visit = (element: SvgElementStub): void => {
+		if (
+			element.tag === "circle"
+			&& element.attributes.get("fill") === "none"
+			&& element.style.display === ""
+		) rings.push(element);
+		for (const child of element.children) visit(child);
+	};
+	visit(root);
+	return rings;
+}
+
 describe("渲染器视觉运行时", () => {
+	it.each([
+		["spawning", 3],
+		["deepThinking", 2],
+		["consulting", 5],
+		["humming", 2],
+	])("%s 的周边圆点显式使用身体颜色", (scene, expectedDots) => {
+		const harness = createVisualHarness();
+		const preset = harness.presets.scenes[scene];
+		if (preset === undefined) throw new Error(`缺少 ${scene} 场景`);
+		harness.character.setInk("#789abc");
+		harness.character.playPreset(preset);
+		for (let time = 16; time <= 1504; time += 16) harness.frame(time);
+
+		const dots = visibleBodyColoredDots(harness.svg);
+		expect(dots).toHaveLength(expectedDots);
+		for (const dot of dots) expect(dot.style.fill).toBe("#789abc");
+		harness.character.destroy();
+	});
+
+	it("radar 的扩散波纹显式使用身体颜色", () => {
+		const harness = createVisualHarness();
+		harness.character.setInk("#789abc");
+		harness.character.playPreset(harness.presets.scenes.radar);
+		for (let time = 16; time <= 1504; time += 16) harness.frame(time);
+
+		const rings = visibleBodyColoredRings(harness.svg);
+		expect(rings).toHaveLength(3);
+		for (const ring of rings) expect(ring.style.stroke).toBe("#789abc");
+		harness.character.destroy();
+	});
+
 	it("重新播放同名预设时重置各动画通道的时间轴", () => {
 		const harness = createVisualHarness();
 		const sleeping = harness.presets.scenes.sleeping;
@@ -210,22 +268,22 @@ describe("渲染器视觉运行时", () => {
 		harness.character.destroy();
 
 		expect(hashes).toEqual([
-			["spawning@0", "1955d3d2b713acdd"],
-			["spawning@16", "7dfcb20a7f8b8f5e"],
-			["coding@2016", "2553c4abddc648c0"],
-			["coding@2500", "2774aa793d24956e"],
-			["loading@5016", "4ceb4ac81639e87f"],
-			["loading@5800", "450ee61df0cd5790"],
-			["receiving@7016", "2bc241e7ae7f5034"],
-			["receiving@7800", "cdc06df5d8b2e4ee"],
-			["quizzical@9016", "06c80910b5024253"],
-			["quizzical@9900", "63c2c48d9196134d"],
-			["cloud@11016", "6c62a5c6c171ec6b"],
-			["cloud@11800", "ef631bd7db84dce3"],
-			["spin@13016", "e6e4e2ffce717860"],
-			["spin@13700", "875d1dd18171029a"],
-			["wink-pounce@15016", "a6f67525b95b8b27"],
-			["wink-pounce@15320", "dd419c0427ef8a6c"],
+			["spawning@0", "819572600225af4e"],
+			["spawning@16", "29b7c2124cf20fad"],
+			["coding@2016", "a1a27b3daf3b4840"],
+			["coding@2500", "ca5416810a31dada"],
+			["loading@5016", "0a7085e60fbaa392"],
+			["loading@5800", "4cb052293799919c"],
+			["receiving@7016", "50f178358c3e185d"],
+			["receiving@7800", "0b39c5447baf5d5a"],
+			["quizzical@9016", "08bc4d7f7912f5d0"],
+			["quizzical@9900", "8c3b8baac2e86913"],
+			["cloud@11016", "a0d19b71eb57be6c"],
+			["cloud@11800", "23bc63b271ff82e5"],
+			["spin@13016", "d3ca58cc195a1981"],
+			["spin@13700", "07b762adda95c15e"],
+			["wink-pounce@15016", "71f01a37b150a1c2"],
+			["wink-pounce@15320", "a627ca9ebe4714f6"],
 		]);
 	});
 

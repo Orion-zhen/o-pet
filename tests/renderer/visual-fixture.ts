@@ -30,6 +30,7 @@ interface VisualCharacter {
 	readonly spinTurn: { t: number; v: number; x: number } | null;
 	readonly trick: { kind: string } | null;
 	playPreset(preset: unknown): void;
+	setInk(value: string): void;
 	setPaused(value: boolean): void;
 	setPreset(preset: unknown, options?: { resetEyes?: boolean }): void;
 	setReduceMotion(value: boolean): void;

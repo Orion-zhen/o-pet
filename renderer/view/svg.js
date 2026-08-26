@@ -326,6 +326,7 @@
         setReduceMotion: (value) => view.particles.setReduceMotion(value),
         setStyle(name, value) {
           view.svg.style.setProperty(name, value);
+          if (name === "--fg") view.fx.setPrimitiveColor(value);
         },
         setViewportStyle(name, value) {
           view.svg.style[name] = value;

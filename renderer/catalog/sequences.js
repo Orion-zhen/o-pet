@@ -18,14 +18,14 @@
       error_stubborn: sequence(step(S.angry, 1400, { preserveEffect: true })),
       completed_quick: sequence(
         step(S.quickHappy, 900, { wink: true }),
-        step(S.notifying, 1500),
+        step(S.notifying, 5000),
       ),
-      completed_normal: sequence(step(S.proud, 1500), step(S.notifying, 2200)),
+      completed_normal: sequence(step(S.proud, 1500), step(S.notifying, 5000)),
       completed_hard: sequence(
         step(S.celebrate, 2500),
-        step(S.notifying, 2500),
+        step(S.notifying, 5000),
       ),
-      run_failed: sequence(step(S.sad, 1800), step(S.notifying, 1600)),
+      run_failed: sequence(step(S.sad, 1800), step(S.notifying, 5000)),
       run_aborted: sequence(step(S.surprised, 600)),
     });
 

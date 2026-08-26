@@ -76,9 +76,11 @@
       spinVel = 0,
       seeding = false,
       cooling = false,
+      lastSeedAt = -Infinity,
       trailId = 0;
     const THRESH = 0.9,
-      HARD = 5;
+      HARD = 5,
+      SUSTAIN_INTERVAL_MS = 3000;
     const makePlanes = (W = 1) => {
       const H = randomRange(-0.85, 0.85);
       planes = [];
@@ -221,13 +223,20 @@
       if (reduce || !back || !emitTrails) return;
       const H = Math.abs(spinVel);
       const live = parts.some((U) => U.orbit != null && U.ret < 1);
-      if (sustain && seeding && spawnQ.length === 0 && H >= THRESH && !live) {
+      if (
+        sustain &&
+        seeding &&
+        spawnQ.length === 0 &&
+        H >= THRESH &&
+        (!live || now - lastSeedAt >= SUSTAIN_INTERVAL_MS)
+      ) {
         seeding = false;
         cooling = true;
       }
       if (!seeding && (H >= HARD || (sustain && cooling && H >= THRESH))) {
         seeding = true;
         cooling = false;
+        lastSeedAt = now;
         spawnQ = [];
         for (let U = 0; U < beltN; U++)
           spawnQ.push({ at: now + U * randomRange(55, 105), i: U });
@@ -419,6 +428,7 @@
       planes = [];
       seeding = false;
       cooling = false;
+      lastSeedAt = -Infinity;
       spin = spinAngle;
       prevSpin = spinAngle;
       spinVel = 0;

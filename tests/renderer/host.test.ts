@@ -163,11 +163,17 @@ describe("渲染器组合根行为", () => {
 	});
 
 
-	it("审批只短暂警示，随后安静等待用户", () => {
+	it("审批只短暂警示，随后等待并显示五秒提醒角标", () => {
 		const { api, character, clock } = createHarness();
 		api.update({ activity: "awaiting_approval" });
 		expect(latest(character).pose).toBe("alerting");
 		clock.advance(1600);
+		expect(latest(character).pose).toBe("listening");
+		clock.advance(15_000);
+		expect(latest(character).pose).toBe("notifying");
+		clock.advance(4999);
+		expect(latest(character).pose).toBe("notifying");
+		clock.advance(1);
 		expect(latest(character).pose).toBe("listening");
 	});
 
@@ -206,7 +212,9 @@ describe("渲染器组合根行为", () => {
 		expect(latest(character).pose).toBe("celebrate");
 		clock.advance(2500);
 		expect(latest(character).pose).toBe("notifying");
-		clock.advance(2500);
+		clock.advance(4999);
+		expect(latest(character).pose).toBe("notifying");
+		clock.advance(1);
 		expect(latest(character).pose).toBe("idle");
 		expect(character.scenes.map((value) => value.pose)).not.toContain("laughing");
 	});

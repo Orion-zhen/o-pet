@@ -205,7 +205,7 @@ idle(drowsy/sleeping) + cue
 | `consulting` | `consulting` 4–6.5 s -> `deepThinking` 1.8–3 s -> 重复 | 无 |
 | `tooling` | `tooling` 4.5–7 s -> `loading` 3–5 s -> 重复 | 无 |
 | `replying` | `replying` 6–10 s -> `listening` 0.7–1.2 s -> 重复 | 无 |
-| `awaiting_approval` | 首次 `alerting` 1.6 s -> 等待场景 15–25 s -> `notifying` 0.9 s -> 重复等待段 | 活动开始未满 45 s 时等待场景为 `listening`。达到 45 s 后，新一轮等待改为 `bored` |
+| `awaiting_approval` | 首次 `alerting` 1.6 s -> 等待场景 15–25 s -> `notifying` 5 s -> 重复等待段 | 活动开始未满 45 s 时等待场景为 `listening`。达到 45 s 后，新一轮等待改为 `bored` |
 
 `thinking` 和 `searching` 会记住各自上一次强调场景。有多个候选时，下一轮排除上一次结果后再按权重选择，因此不会连续两轮使用同一强调场景。
 
@@ -267,10 +267,10 @@ idle(drowsy/sleeping) + cue
 | `error_first` | 3 | `surprised` 650 ms，保留 Cue 触发前的视觉特效 |
 | `error_repeated` | 3 | `confused` 1200 ms，保留 Cue 触发前的视觉特效 |
 | `error_stubborn` | 3 | `angry` 1400 ms，保留 Cue 触发前的视觉特效 |
-| `completed_quick` | 4 | `quickHappy` 900 ms，并单次眨眼 -> `notifying` 1500 ms |
-| `completed_normal` | 4 | `proud` 1500 ms -> `notifying` 2200 ms |
-| `completed_hard` | 4 | `celebrate` 2500 ms -> `notifying` 2500 ms |
-| `run_failed` | 4 | `sad` 1800 ms -> `notifying` 1600 ms |
+| `completed_quick` | 4 | `quickHappy` 900 ms，并单次眨眼 -> `notifying` 5000 ms |
+| `completed_normal` | 4 | `proud` 1500 ms -> `notifying` 5000 ms |
+| `completed_hard` | 4 | `celebrate` 2500 ms -> `notifying` 5000 ms |
+| `run_failed` | 4 | `sad` 1800 ms -> `notifying` 5000 ms |
 | `run_aborted` | 4 | `surprised` 600 ms |
 
 `preserveEffect` 只替换 `motion`、`face`、`expression` 和 `gaze`。例如编码时收到 `error_repeated`，身体改为 `confused`，但铅笔等 `form`、`decoration`、`particles`、`camera` 和 `badge` 通道继续显示。

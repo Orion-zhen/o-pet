@@ -122,7 +122,9 @@ describe("渲染器目录与控制通道", () => {
 			scenes: Record<string, VisualPreset>;
 		};
 		const sequences = (windowStub.OPET_SEQUENCES as {
-			create(presets: unknown): { cues: Record<string, Array<{ preserveEffect?: boolean }>> };
+			create(presets: unknown): {
+				cues: Record<string, Array<{ duration: number; preserveEffect?: boolean }>>;
+			};
 		}).create(presets);
 		const expectedChannels = [
 			"motion", "face", "expression", "gaze", "form",
@@ -167,6 +169,11 @@ describe("渲染器目录与控制通道", () => {
 			camera: { id: null },
 		});
 		expect(sequences.cues.error_repeated?.[0]?.preserveEffect).toBe(true);
+		for (const cue of [
+			"completed_quick", "completed_normal", "completed_hard", "run_failed",
+		]) {
+			expect(sequences.cues[cue]?.at(-1)?.duration).toBe(5000);
+		}
 	});
 
 

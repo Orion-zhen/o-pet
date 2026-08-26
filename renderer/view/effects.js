@@ -121,6 +121,7 @@
         this.recvDir = -0.7;
         this.recvTick = -1;
         this.overlayAt = 0;
+        this.primitiveColor = "var(--fg)";
         this.circlePath = "";
         this.pencilPath = "";
         this.bangPath = "";
@@ -182,6 +183,9 @@
         run("pencil", (a) => this.paintPencil(a, now, stateAt, R));
         run("bang", (a) => this.paintBang(a, now, stateAt, R));
         run("standby", (a) => this.paintStandby(a, now, R));
+        for (const ring of this.rings) {
+          if (ring.style.display === "") ring.style.stroke = this.primitiveColor;
+        }
       }
 
       paintDots(ze, now, R) {
@@ -585,6 +589,12 @@
           opacityFade: fade,
           radiusPx: A2,
         };
+      }
+
+      setPrimitiveColor(color) {
+        this.primitiveColor = color;
+        for (const primitive of [...this.dots, ...this.parts])
+          primitive.style.fill = color;
       }
 
       resetInk() {

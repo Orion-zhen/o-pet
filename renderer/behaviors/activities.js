@@ -148,7 +148,7 @@
           ? [{ scene: scenes.alerting, duration: 1600 }]
           : [
               { scene: waiting, duration: randomDelay([15_000, 25_000]) },
-              { scene: scenes.notifying, duration: 900 },
+              { scene: scenes.notifying, duration: 5000 },
             ],
         {
           onComplete() {

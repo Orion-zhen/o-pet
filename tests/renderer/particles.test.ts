@@ -67,21 +67,47 @@ function createParticleHarness(): {
 	};
 }
 
+function advanceLoading(
+	particles: ParticleController,
+	from: number,
+	through: number,
+	spinAngle: number,
+): number {
+	for (let now = from; now <= through; now += 16) {
+		const dt = 0.016;
+		spinAngle += (now < 1_000 ? 7 : 3) * dt;
+		particles.update(now, dt, {
+			emitTrails: true,
+			sizeScale: 1,
+			spinAngle,
+			sustainBelts: true,
+			wideStyle: false,
+		});
+	}
+	return spinAngle;
+}
+
 describe("渲染器粒子生命周期", () => {
+	it("持续 loading 会在旧彩带退场前生成下一组", () => {
+		const { elements, particles, removedTrails } = createParticleHarness();
+		const spinAngle = advanceLoading(particles, 0, 1_000, 0);
+		const firstGenerationSize = elements.filter((element) => (
+			element.attributes.has("data-trail")
+		)).length;
+
+		advanceLoading(particles, 1_008, 4_000, spinAngle);
+		const overlappingSize = elements.filter((element) => (
+			element.attributes.has("data-trail")
+		)).length;
+
+		expect(firstGenerationSize).toBeGreaterThan(0);
+		expect(removedTrails()).toBe(0);
+		expect(overlappingSize).toBeGreaterThan(firstGenerationSize);
+	});
+
 	it("长时间 loading 会销毁旧彩带并保持新彩带可见", () => {
 		const { elements, particles, removedTrails } = createParticleHarness();
-		let spinAngle = 0;
-		for (let now = 0; now <= 12_000; now += 16) {
-			const dt = 0.016;
-			spinAngle += (now < 1_000 ? 7 : 3) * dt;
-			particles.update(now, dt, {
-				emitTrails: true,
-				sizeScale: 1,
-				spinAngle,
-				sustainBelts: true,
-				wideStyle: false,
-			});
-		}
+		advanceLoading(particles, 0, 12_000, 0);
 
 		expect(removedTrails()).toBeGreaterThan(0);
 		expect(elements.some((element) => (
