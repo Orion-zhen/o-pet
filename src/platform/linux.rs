@@ -169,7 +169,7 @@ struct MonitorChoice {
     monitor: gdk::Monitor,
 }
 
-pub(crate) fn run() -> gtk::glib::ExitCode {
+pub(crate) fn run(action: Option<String>) -> gtk::glib::ExitCode {
     let config = match Config::load() {
         Ok(config) => config,
         Err(error) => {
@@ -177,33 +177,37 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
             return 1.into();
         }
     };
-    let endpoint = match ipc::resolve_endpoint() {
-        Ok(endpoint) => endpoint,
-        Err(error) => {
-            eprintln!("无法确定 o-pet IPC 端点: {error}");
-            return 1.into();
-        }
-    };
     let (sender, receiver) = async_channel::bounded(ANIMATION_QUEUE_CAPACITY);
     let overflow_receiver = receiver.clone();
-    let server = match ipc::Server::bind(&endpoint, move |update| {
-        if sender.try_send(update).is_err() {
-            let _ = overflow_receiver.try_recv();
-            let _ = sender.try_send(update);
-        }
-    }) {
-        Ok(server) => server,
-        Err(error) => {
-            if error.kind() == io::ErrorKind::AddrInUse {
-                eprintln!(
-                    "无法启动 o-pet: IPC 端点 {} 已被使用，另一个实例可能正在运行",
-                    endpoint.display()
-                );
-            } else {
-                eprintln!("无法启动 o-pet IPC 服务: {error}");
+    let server = if action.is_none() {
+        let endpoint = match ipc::resolve_endpoint() {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                eprintln!("无法确定 o-pet IPC 端点: {error}");
+                return 1.into();
             }
-            return 1.into();
+        };
+        match ipc::Server::bind(&endpoint, move |update| {
+            if sender.try_send(update).is_err() {
+                let _ = overflow_receiver.try_recv();
+                let _ = sender.try_send(update);
+            }
+        }) {
+            Ok(server) => Some(server),
+            Err(error) => {
+                if error.kind() == io::ErrorKind::AddrInUse {
+                    eprintln!(
+                        "无法启动 o-pet: IPC 端点 {} 已被使用，另一个实例可能正在运行",
+                        endpoint.display()
+                    );
+                } else {
+                    eprintln!("无法启动 o-pet IPC 服务: {error}");
+                }
+                return 1.into();
+            }
         }
+    } else {
+        None
     };
 
     let (tray_sender, tray_receiver) = async_channel::unbounded();
@@ -214,7 +218,9 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
         Ok(tray) => tray,
         Err(error) => {
             eprintln!("无法创建 o-pet 托盘图标: {error}");
-            server.shutdown();
+            if let Some(server) = server {
+                server.shutdown();
+            }
             return 1.into();
         }
     };
@@ -237,15 +243,18 @@ pub(crate) fn run() -> gtk::glib::ExitCode {
             receiver.clone(),
             tray_receiver.clone(),
             &config,
+            action.clone(),
         ) {
             eprintln!("无法创建 o-pet Linux 窗口: {error}");
             failed.set(true);
             application.quit();
         }
     });
-    let exit_code = application.run();
+    let exit_code = application.run_with_args(&["o-pet"]);
     tray.shutdown().wait();
-    server.shutdown();
+    if let Some(server) = server {
+        server.shutdown();
+    }
     if startup_failed.get() {
         1.into()
     } else {
@@ -258,6 +267,7 @@ fn build_window(
     updates: async_channel::Receiver<AnimationUpdate>,
     tray_commands: async_channel::Receiver<TrayCommand>,
     config: &Config,
+    action: Option<String>,
 ) -> io::Result<()> {
     let display = gdk::Display::default()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "没有可用的 GDK display"))?;
@@ -339,7 +349,11 @@ fn build_window(
         if event == LoadEvent::Finished {
             loaded_flag.set(true);
             send_preferences(web_view, &preferences);
-            send_update(web_view, AnimationUpdate::steady(loaded_activity.get()));
+            if let Some(action) = &action {
+                show_action(web_view, action);
+            } else {
+                send_update(web_view, AnimationUpdate::steady(loaded_activity.get()));
+            }
         }
     });
 
@@ -426,6 +440,22 @@ fn send_preferences(web_view: &WebView, preferences: &RendererPreferences) {
         |result| {
             if let Err(error) = result {
                 eprintln!("无法向渲染页面发送配置: {error}");
+            }
+        },
+    );
+}
+
+fn show_action(web_view: &WebView, action: &str) {
+    let payload = serde_json::to_string(action).expect("action name must serialize");
+    let script = format!("window.oPet.showAction({payload})");
+    web_view.evaluate_javascript(
+        &script,
+        None,
+        None,
+        None::<&gtk::gio::Cancellable>,
+        |result| {
+            if let Err(error) = result {
+                eprintln!("无法向渲染页面发送动画预设: {error}");
             }
         },
     );

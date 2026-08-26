@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"renderer:test": "vitest --run tests/renderer.test.ts",
+		"renderer:test": "vitest --run tests/renderer",
 		"renderer:typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {

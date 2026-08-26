@@ -27,16 +27,34 @@ npm run renderer:test
 cargo run --release
 ```
 
+查看所有动画预设：
+
+```bash
+cargo run --release -- --list-actions
+```
+
+按名称预览动画预设：
+
+```bash
+cargo run --release -- --show-action happy
+```
+
+预览模式每轮播放指定预设 3 秒，暂停 1 秒后重新播放。预览模式不启动 IPC 服务，因此可以与正常运行的桌宠实例同时启动。
+
 ## 渲染器架构
 
-渲染器按职责分为四层：
+渲染器使用单向依赖和显式组合：
 
-- `renderer/host.js` 根据活动、Cue、空闲深度和用户交互选择动画。
-- `renderer/grok/presets.js` 组合场景，`sequences.js` 安排有限动画序列。场景由 `motion`、`face`、`expression`、`gaze`、`form`、`decoration`、`particles`、`camera` 和 `badge` 九个固定通道组成。
-- `motion.js`、`expression.js`、`gaze.js`、`actions.js` 和 `choreography.js` 计算各通道的目标值与瞬态动作。控制器不生成 SVG 路径，也不直接调用其他控制器。
-- `geometry.js` 从原始形状数据派生轮廓、截面和旋转形变。`render.js`、`eyes.js`、`effects.js` 和 `particles.js` 将已混合的状态写入 SVG。
+- `renderer/catalog/` 保存动作名称、场景预设和有限序列。场景由 `motion`、`face`、`expression`、`gaze`、`form`、`decoration`、`particles`、`camera` 和 `badge` 九个固定通道组成。
+- `renderer/behaviors/` 将 Agent 活动、空闲深度、Cue 和用户交互转换为时间线。各行为模块只依赖场景目录、随机数和时间线端口。
+- `renderer/runtime/` 提供统一动画时钟、可取消时间线和场景呈现端口。统一时钟同时冻结定时器、动画帧和动画时间。
+- `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。`visual-channels.js` 独立管理形变、装饰、粒子、相机和徽标的过渡状态。
+- `renderer/view/` 从帧模型生成 SVG。视图模块拥有 SVG 节点、特效和粒子资源，不读取动画运行时的内部对象。
+- `renderer/adapters/` 管理浏览器指针、原生拖动协议和动态偏好。`renderer/host.js` 是唯一组合根，只处理外部事件、行为优先级和销毁顺序。
 
-`geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。
+内部模块放在页面脚本的私有作用域中，浏览器全局只暴露 `window.oPet`。构造动画运行时所需的时钟、随机数、文档和渲染端口均由组合根注入。
+
+`renderer/view/geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。
 
 启动后，macOS 会在 Dock 中显示应用图标。macOS、Windows 和 Linux 均会创建托盘图标。托盘菜单可显示或隐藏桌宠，也可退出应用。Linux 桌面环境必须提供 StatusNotifierItem 主机才能显示托盘图标。
 

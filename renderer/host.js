@@ -1,4 +1,4 @@
-/* o-pet 行为导演。空闲深度独立于画面，动作片段按阶段、历史、冷却和能量选择。 */
+/* o-pet 组合根。只协调行为优先级、外部事件和模块生命周期。 */
 (function (g) {
   const ACTIVITIES = Object.freeze({
     idle: true,
@@ -12,1090 +12,377 @@
     replying: true,
     awaiting_approval: true,
   });
-  const CUES = Object.freeze({
-    engage: Object.freeze({ priority: 1 }),
-    progress: Object.freeze({ priority: 0 }),
-    reply_sent: Object.freeze({ priority: 2 }),
-    approval_granted: Object.freeze({ priority: 2 }),
-    approval_denied: Object.freeze({ priority: 2 }),
-    error_first: Object.freeze({ priority: 3 }),
-    error_repeated: Object.freeze({ priority: 3 }),
-    error_stubborn: Object.freeze({ priority: 3 }),
-    completed_quick: Object.freeze({ priority: 4 }),
-    completed_normal: Object.freeze({ priority: 4 }),
-    completed_hard: Object.freeze({ priority: 4 }),
-    run_failed: Object.freeze({ priority: 4 }),
-    run_aborted: Object.freeze({ priority: 4 }),
-  });
+  const CUES = g.O_PET_CUES.PRIORITY;
+  const ACTIONS = new Set(
+    g.O_PET_ACTION_GROUPS.flatMap((group) => group.states),
+  );
+  const hasOwn = (value, key) =>
+    Object.prototype.hasOwnProperty.call(value, key);
   const STARTUP_MS = 2000;
   const WAKING_MS = 1800;
   const ACTIVITY_SETTLE_MS = 350;
-  const STARTLED_MS = 650;
-  const QUIZZICAL_MS = 2200;
-  const POKE_WINDOW_MS = 25_000;
-  const POKE_THRESHOLD = 3;
-  const PROTECTED_MODES = new Set(["startup", "waking"]);
-  const COMPLETION_CUES = new Set([
-    "completed_quick", "completed_normal", "completed_hard", "run_failed", "run_aborted",
-  ]);
-  const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
-
-  const PRESETS = g.GROK_PRESETS;
-  const SEQUENCES = g.GROK_SEQUENCES;
-  const SCENES = PRESETS.scenes;
+  const ACTION_PLAY_MS = 3000;
+  const ACTION_PAUSE_MS = 1000;
 
   function create(options) {
-    const doc = options.document || document;
-    const clock = options.clock || g;
-    const frameClock = options.frameClock || g;
-    const rawNow = options.now || (() => performance.now());
-    let hiddenAt = doc.hidden ? rawNow() : null;
-    let hiddenDuration = 0;
-    const now = () => {
-      const raw = rawNow();
-      return raw - hiddenDuration - (hiddenAt === null ? 0 : raw - hiddenAt);
-    };
-    const random = options.random || Math.random;
-    const motionQuery = options.motionQuery || g.matchMedia("(prefers-reduced-motion: reduce)");
-    const character = new g.GrokCharacter(options.svg, {
-      color: "black",
-      followPointer: true,
-      mode: "hold",
-      shape: "blob",
-      state: "spawning",
+    const doc = options.document;
+    const timerClock = options.clock;
+    const frameClock = options.frameClock;
+    const rawNow = options.now;
+    const random = options.random;
+    const motionQuery = options.motionQuery;
+    const viewportWidth = options.viewportWidth;
+    const scheduler = g.O_PET_SCHEDULER.create({
+      timerClock,
+      frameClock,
+      now: rawNow,
     });
+    const now = scheduler.now;
+    const presets = g.GROK_PRESETS;
+    const tables = g.GROK_TABLES.create(g.GROK_GEO, g.O_PET_ACTION_GROUPS);
+    const scenes = presets.scenes;
+    const sequences = g.GROK_SEQUENCES.create(presets);
+    const math = g.GROK_MATH.create(random);
+    const geometry = g.GROK_GEOMETRY.create({ data: g.GROK_GEO, math });
+    const effects = g.GROK_EFFECTS.create({ data: g.GROK_GEO, math });
+    const eyes = g.GROK_EYES.create({ geometry, math }, random);
+    const character = g.O_PET_RUNTIME.create(
+      {
+        actions: g.GROK_ACTIONS,
+        choreography: g.GROK_CHOREOGRAPHY,
+        data: g.GROK_GEO,
+        effects,
+        expression: g.GROK_EXPRESSION,
+        eyes,
+        gaze: g.GROK_GAZE,
+        geometry,
+        math,
+        motion: g.GROK_MOTION,
+        presets,
+        tables,
+        visualChannels: g.O_PET_VISUAL_CHANNELS,
+      },
+      {
+        clock: scheduler,
+        color: "black",
+        createRenderer: () =>
+          g.GROK_RENDER.create(
+            {
+              data: g.GROK_GEO,
+              effects,
+              eyes,
+              geometry,
+              math,
+              particles: g.GROK_PARTICLES,
+              tables,
+            },
+            {
+              document: doc,
+              initialShape: "blob",
+              rand: math.rand,
+              random,
+              svg: options.svg,
+            },
+          ),
+        followPointer: true,
+        math,
+        random,
+        shape: "blob",
+        state: "spawning",
+      },
+    );
+    const presenter = g.O_PET_PRESENTER.create({
+      character,
+      initialScene: scenes.spawning,
+      presets,
+    });
+    const timeline = g.O_PET_TIMELINE.create({
+      scheduler,
+      enterStep: presenter.enterStep,
+    });
+    const activities = g.O_PET_ACTIVITIES.create({
+      now,
+      random,
+      scenes,
+      timeline,
+    });
+    const idle = g.O_PET_IDLE.create({
+      now,
+      presets,
+      random,
+      scenes,
+      timeline,
+    });
+    const cues = g.O_PET_CUES.create({
+      sequences: sequences.cues,
+      timeline,
+      onFinished: enterActivity,
+    });
+    const preferences = g.O_PET_PREFERENCES.create({
+      character,
+      geometry: g.GROK_GEO,
+      motionQuery,
+    });
+
     let activity = "idle";
     let activityAt = now();
-    let currentCue = null;
-    let currentScene = SCENES.spawning;
-    let destroyed = false;
-    let lastProgressAt = -Infinity;
-    let mode = "startup";
-    let pendingCue = null;
-    let pointer = null;
-    let interaction = null;
-    let reduceMotionPreference = false;
-    let transition = null;
-    let idleSession = null;
-    let idleDepth = "awake";
-    let idleRecoveryUntil = 0;
-    let idleQuietUntil = 0;
+    let state = Object.freeze({ kind: "startup" });
     let wakeBeforeActivity = false;
-    let energyBudget = 3;
-    let previousEnergy = "low";
-    let recentFragments = [];
-    let pokeTimes = [];
-    let lastHoverAt = -Infinity;
-    const fragmentLastAt = new Map();
-    const lastAccent = new Map();
-    const lastDirection = new Map();
+    let switchTimer = null;
+    let destroyed = false;
 
-    function clearTransition() {
-      if (!transition) return;
-      if (transition.handle !== null) clock.clearTimeout(transition.handle);
-      transition = null;
+    function setState(kind) {
+      state = Object.freeze({ kind });
     }
 
-    function armTransition() {
-      if (!transition || transition.handle !== null || doc.hidden || destroyed) return;
-      transition.due = now() + transition.remaining;
-      transition.handle = clock.setTimeout(() => {
-        const callback = transition?.callback;
-        transition = null;
-        callback?.();
-      }, transition.remaining);
+    function clearSwitch() {
+      if (switchTimer !== null) scheduler.clearTimeout(switchTimer);
+      switchTimer = null;
     }
 
-    function scheduleTransition(kind, delay, callback) {
-      clearTransition();
-      transition = { callback, due: 0, handle: null, kind, remaining: Math.max(0, delay) };
-      armTransition();
-    }
-
-    function pauseTransition() {
-      if (!transition || transition.handle === null) return;
-      clock.clearTimeout(transition.handle);
-      transition.handle = null;
-      transition.remaining = Math.max(0, transition.due - now());
-    }
-
-    function randomDelay([minimum, maximum]) {
-      return minimum + Math.floor(random() * (maximum - minimum + 1));
-    }
-
-    function chooseDirection(key) {
-      let direction = random() < 0.5 ? -1 : 1;
-      if (lastDirection.get(key) === direction) direction *= -1;
-      lastDirection.set(key, direction);
-      return direction;
-    }
-
-    function withDetails(base, details) {
-      return PRESETS.withDetails(base, details);
-    }
-
-    function setScene(nextScene) {
-      if (currentScene === nextScene) return;
-      currentScene = nextScene;
-      if (!pointer || !interaction?.visualOnly) character.setPreset(nextScene, { resetEyes: false });
-    }
-
-    function setGazeTarget(target) {
-      character.setGazeTarget(target);
-    }
-
-    function withReaction(reactionScene) {
-      const base = currentScene.preset ?? currentScene;
-      const reaction = reactionScene.preset ?? reactionScene;
-      return PRESETS.replaceChannels(base, reaction, ["motion", "face", "expression", "gaze"]);
-    }
-
-    function chooseAccent(activityName, candidates) {
-      const previous = lastAccent.get(activityName);
-      const available = candidates.length > 1
-        ? candidates.filter((candidate) => candidate.name !== previous)
-        : candidates;
-      const total = available.reduce((sum, candidate) => sum + candidate.weight, 0);
-      let target = random() * total;
-      let selected = available[available.length - 1];
-      for (const candidate of available) {
-        target -= candidate.weight;
-        if (target <= 0) {
-          selected = candidate;
-          break;
-        }
-      }
-      lastAccent.set(activityName, selected.name);
-      return selected;
-    }
-
-    function performStep(step) {
-      setScene(step.scene);
-      if (step.wink) character.winkOnce();
-      if (step.spin) character.spinOnce(step.spin.turns, step.spin.direction);
-      if (step.bounce) character.bounceOnce();
-      if (step.pounce) character.pounceOnce(step.pounce.direction, step.pounce.strength);
-    }
-
-    function playSequence(sequenceMode, steps, onComplete) {
-      clearTransition();
-      mode = sequenceMode;
-      let index = 0;
-      const play = () => {
-        if (destroyed || mode !== sequenceMode) return;
-        const step = steps[index];
-        if (!step) {
-          onComplete();
-          return;
-        }
-        index += 1;
-        performStep(step);
-        scheduleTransition(sequenceMode, step.duration, play);
-      };
-      play();
-    }
-
-    function createIdleSession(startedAt) {
-      const relaxedAt = randomDelay([90_000, 150_000]);
-      const drowsyAt = Math.max(relaxedAt + 60_000, randomDelay([240_000, 420_000]));
-      const sleepingAt = Math.max(drowsyAt + 180_000, randomDelay([600_000, 900_000]));
-      return { startedAt, relaxedAt, drowsyAt, sleepingAt };
-    }
-
-    function resetIdleSession(startedAt = now()) {
-      idleSession = createIdleSession(startedAt);
-      idleDepth = "awake";
-      idleRecoveryUntil = 0;
-      idleQuietUntil = 0;
-      energyBudget = 3;
-      previousEnergy = "low";
-      recentFragments = [];
-      fragmentLastAt.clear();
-    }
-
-    function idleDepthAt(at) {
-      if (!idleSession) return "awake";
-      const elapsed = at - idleSession.startedAt;
-      if (elapsed >= idleSession.sleepingAt) {
-        return at < idleRecoveryUntil ? "drowsy" : "sleeping";
-      }
-      if (elapsed >= idleSession.drowsyAt) return "drowsy";
-      if (elapsed >= idleSession.relaxedAt) return "relaxed";
-      return "awake";
-    }
-
-    function syncIdleDepth() {
-      idleDepth = idleDepthAt(now());
-      return idleDepth;
-    }
-
-    function nextDepthBoundary() {
-      if (!idleSession) return Infinity;
-      const at = now();
-      const elapsed = at - idleSession.startedAt;
-      if (elapsed < idleSession.relaxedAt) return idleSession.startedAt + idleSession.relaxedAt;
-      if (elapsed < idleSession.drowsyAt) return idleSession.startedAt + idleSession.drowsyAt;
-      if (elapsed < idleSession.sleepingAt) return idleSession.startedAt + idleSession.sleepingAt;
-      if (at < idleRecoveryUntil) return idleRecoveryUntil;
-      return Infinity;
-    }
-
-    function idleBaseScene(depth = idleDepth) {
-      if (depth === "drowsy") return SCENES.drowsy;
-      if (depth === "sleeping") return SCENES.sleeping;
-      return SCENES.idle;
-    }
-
-    const IDLE_FRAGMENTS = [
-      {
-        name: "notice",
-        phases: ["awake", "relaxed"],
-        energy: "low",
-        weight: 5,
-        cooldown: 20_000,
-        build() {
-          const direction = chooseDirection("notice");
-          const found = random() < 0.35;
-          return [
-            { scene: withDetails(SCENES.gazeListening, { direction }), duration: 250 },
-            { scene: withDetails(SCENES.listening, { direction }), duration: 450 },
-            { scene: withDetails(SCENES.curious, { direction }), duration: 900 },
-            found
-              ? { scene: withDetails(SCENES.playful, { direction }), duration: 600, pounce: { direction, strength: 0.4 } }
-              : { scene: withDetails(SCENES.idle, { direction }), duration: 700 },
-            ...(found ? [{ scene: SCENES.happy, duration: 900 }] : []),
-          ];
-        },
-      },
-      {
-        name: "patrol",
-        phases: ["awake", "relaxed"],
-        energy: "low",
-        weight: 3,
-        cooldown: 30_000,
-        build() {
-          const direction = chooseDirection("patrol");
-          return [
-            { scene: withDetails(SCENES.gazeSearching, { direction }), duration: 250 },
-            { scene: withDetails(SCENES.searching, { direction }), duration: 1500 },
-            { scene: withDetails(SCENES.searching, { direction: -direction }), duration: 650 },
-            { scene: SCENES.proud, duration: 1000 },
-          ];
-        },
-      },
-      {
-        name: "pounce",
-        phases: ["awake"],
-        energy: "medium",
-        weight: 2,
-        cooldown: 35_000,
-        build() {
-          const direction = chooseDirection("pounce");
-          const success = random() < 0.55;
-          return [
-            { scene: withDetails(SCENES.gazeCurious, { direction }), duration: 250 },
-            { scene: withDetails(SCENES.curious, { direction }), duration: 400 },
-            { scene: withDetails(SCENES.playful, { direction }), duration: 500 },
-            { scene: withDetails(SCENES.jumping, { direction }), duration: 1050, pounce: { direction, strength: 1 } },
-            ...(success
-              ? [{ scene: SCENES.happy, duration: 900 }]
-              : [{ scene: SCENES.surprised, duration: 600 }, { scene: SCENES.shy, duration: 900 }]),
-          ];
-        },
-      },
-      {
-        name: "bounce-practice",
-        phases: ["awake"],
-        energy: "high",
-        weight: 1.4,
-        cooldown: 75_000,
-        build() {
-          const failed = random() < 0.18;
-          return [
-            { scene: SCENES.playful, duration: 700 },
-            { scene: SCENES.jumping, duration: 1800, bounce: true },
-            ...(failed
-              ? [{ scene: SCENES.surprised, duration: 650 }, { scene: SCENES.shy, duration: 800 }]
-              : [{ scene: SCENES.happy, duration: 1000 }]),
-          ];
-        },
-      },
-      {
-        name: "spin-challenge",
-        phases: ["awake"],
-        energy: "high",
-        weight: 0.9,
-        cooldown: 90_000,
-        build() {
-          const direction = chooseDirection("spin");
-          const result = random();
-          const ending = result < 0.62
-            ? [{ scene: SCENES.proud, duration: 1100 }]
-            : result < 0.96
-              ? [{ scene: SCENES.shy, duration: 1300 }]
-              : [{ scene: SCENES.quickHappy, duration: 900, wink: true, pounce: { direction, strength: 0.35 } }];
-          return [
-            { scene: withDetails(SCENES.playful, { direction: -direction }), duration: 500 },
-            { scene: withDetails(SCENES.playful, { direction }), duration: 1400, spin: { turns: 1, direction } },
-            ...ending,
-          ];
-        },
-      },
-      {
-        name: "stretch",
-        phases: ["awake", "relaxed"],
-        energy: "medium",
-        weight: 2,
-        cooldown: 40_000,
-        build() {
-          const direction = chooseDirection("stretch");
-          return [
-            { scene: withDetails(SCENES.stretching, { direction }), duration: 3500 },
-            { scene: SCENES.happy, duration: 800 },
-          ];
-        },
-      },
-      {
-        name: "quiet-observe",
-        phases: ["relaxed"],
-        energy: "low",
-        weight: 4,
-        cooldown: 18_000,
-        build() {
-          const direction = chooseDirection("observe");
-          return [
-            { scene: withDetails(SCENES.listening, { direction }), duration: 1200 },
-            { scene: SCENES.idle, duration: 900 },
-          ];
-        },
-      },
-      {
-        name: "self-entertain",
-        phases: ["relaxed"],
-        energy: "medium",
-        weight: 2.2,
-        cooldown: 40_000,
-        build() {
-          return [
-            { scene: SCENES.bored, duration: 1600 },
-            { scene: SCENES.curious, duration: 900 },
-            { scene: SCENES.playful, duration: 800 },
-          ];
-        },
-      },
-      {
-        name: "sleepy-nod",
-        phases: ["drowsy"],
-        energy: "low",
-        weight: 5,
-        cooldown: 20_000,
-        build() {
-          return [
-            { scene: SCENES.drowsy, duration: 2200 },
-            { scene: SCENES.surprised, duration: 600 },
-            { scene: SCENES.drowsy, duration: 900 },
-          ];
-        },
-      },
-      {
-        name: "resist-sleep",
-        phases: ["drowsy"],
-        energy: "medium",
-        weight: 2.2,
-        cooldown: 40_000,
-        build() {
-          const direction = chooseDirection("sleepy-stretch");
-          return [
-            { scene: withDetails(SCENES.stretching, { direction }), duration: 3500 },
-            { scene: SCENES.happy, duration: 700 },
-            { scene: SCENES.drowsy, duration: 900 },
-          ];
-        },
-      },
-      {
-        name: "half-awake",
-        phases: ["drowsy"],
-        energy: "low",
-        weight: 2.5,
-        cooldown: 30_000,
-        build() {
-          const direction = chooseDirection("half-awake");
-          return [
-            { scene: withDetails(SCENES.sleepyCurious, { direction }), duration: 1600 },
-            { scene: SCENES.drowsy, duration: 1000 },
-          ];
-        },
-      },
-      {
-        name: "sleepy-play",
-        phases: ["drowsy"],
-        energy: "medium",
-        weight: 1,
-        cooldown: 70_000,
-        build() {
-          return [
-            { scene: SCENES.playful, duration: 900 },
-            { scene: SCENES.drowsy, duration: 1300 },
-          ];
-        },
-      },
-      ...["float", "curl", "twitch"].map((variant) => ({
-        name: `dream-${variant}`,
-        phases: ["sleeping"],
-        energy: "low",
-        weight: 1,
-        cooldown: 35_000,
-        build() {
-          return [{
-            scene: withDetails(SCENES.dreaming, {
-              direction: variant === "curl" ? chooseDirection("dream-curl") : 0,
-              variant,
-            }),
-            duration: randomDelay([6000, 10_000]),
-          }];
-        },
-      })),
-    ];
-
-    function selectIdleFragment() {
-      const at = now();
-      const recent = new Set(recentFragments.slice(-3));
-      const supportsEnergy = (fragment) => fragment.energy !== "high"
-        || (energyBudget >= 3 && previousEnergy !== "high");
-      const cooled = (fragment) => at - (fragmentLastAt.get(fragment.name) ?? -Infinity) >= fragment.cooldown;
-      const phaseCandidates = IDLE_FRAGMENTS.filter((fragment) => (
-        fragment.phases.includes(idleDepth) && cooled(fragment) && supportsEnergy(fragment)
-      ));
-      let candidates = phaseCandidates.filter((fragment) => !recent.has(fragment.name));
-      if (candidates.length === 0) {
-        const previous = recentFragments.at(-1);
-        candidates = phaseCandidates.filter((fragment) => fragment.name !== previous);
-      }
-      if (candidates.length === 0) return null;
-      const total = candidates.reduce((sum, fragment) => sum + fragment.weight, 0);
-      let target = random() * total;
-      let selected = candidates[candidates.length - 1];
-      for (const candidate of candidates) {
-        target -= candidate.weight;
-        if (target <= 0) {
-          selected = candidate;
-          break;
-        }
-      }
-      fragmentLastAt.set(selected.name, at);
-      recentFragments.push(selected.name);
-      if (recentFragments.length > 6) recentFragments.shift();
-      if (selected.energy === "high") energyBudget = 0;
-      else if (selected.energy === "low") energyBudget = Math.min(3, energyBudget + 1);
-      else energyBudget = Math.min(3, energyBudget + 0.5);
-      previousEnergy = selected.energy;
-      return selected;
-    }
-
-    function idleInterval() {
-      if (idleDepth === "relaxed") return randomDelay([8000, 14_000]);
-      if (idleDepth === "drowsy") return randomDelay([10_000, 18_000]);
-      if (idleDepth === "sleeping") return randomDelay([18_000, 30_000]);
-      return randomDelay([5000, 9000]);
-    }
-
-    function enterIdleDirector() {
-      clearTransition();
-      currentCue = null;
-      mode = "idle";
-      setGazeTarget(null);
-      const previousDepth = idleDepth;
-      syncIdleDepth();
-      setScene(idleBaseScene());
-      let delay = idleInterval();
-      if (idleQuietUntil > now()) delay = Math.max(delay, idleQuietUntil - now());
-      const boundary = nextDepthBoundary();
-      delay = Math.min(delay, boundary - now());
-      scheduleTransition("idle", delay, () => {
-        if (activity !== "idle" || mode !== "idle") return;
-        syncIdleDepth();
-        if (idleDepth !== previousDepth || now() >= boundary) {
-          enterIdleDirector();
-          return;
-        }
-        const fragment = selectIdleFragment();
-        if (!fragment) {
-          enterIdleDirector();
-          return;
-        }
-        const wasHigh = fragment.energy === "high";
-        playSequence("idle-fragment", fragment.build(), () => {
-          if (activity !== "idle" || mode !== "idle-fragment") return;
-          if (wasHigh) idleQuietUntil = now() + randomDelay([20_000, 30_000]);
-          enterIdleDirector();
-        });
-      });
-    }
-
-    function playUserGaze() {
-      if (
-        activity !== "idle"
-        || pointer
-        || (mode !== "idle" && mode !== "idle-fragment")
-        || now() - lastHoverAt < 45_000
-      ) return;
-      syncIdleDepth();
-      if (idleDepth !== "awake" && idleDepth !== "relaxed") return;
-      lastHoverAt = now();
-      const steps = [
-        { scene: SCENES.curious, duration: 500 },
-        { scene: SCENES.frontAttention, duration: 1300 },
-      ];
-      if (random() < 0.18) steps.push({ scene: SCENES.quickHappy, duration: 700, wink: true });
-      playSequence("idle-fragment", steps, () => {
-        if (activity === "idle" && mode === "idle-fragment") enterIdleDirector();
-      });
-    }
-
-    function stillIn(expectedActivity) {
-      return !destroyed && mode === "activity" && activity === expectedActivity;
-    }
-
-    function scheduleReturn(expectedActivity, duration) {
-      scheduleTransition("activity", duration, () => {
-        if (stillIn(expectedActivity)) enterActivity();
-      });
-    }
-
-    function enterThinking() {
-      setScene(SCENES.thinking);
-      scheduleTransition("activity", randomDelay([3_000, 6_000]), () => {
-        if (!stillIn("thinking")) return;
-        const accent = chooseAccent("thinking", [
-          { name: "humming", scene: SCENES.humming, weight: 0.72, duration: [6000, 9000] },
-          { name: "deep", scene: SCENES.deepThinking, weight: 0.18, duration: [3500, 5500] },
-          { name: "radar", scene: SCENES.radar, weight: 0.1, duration: [3200, 4800] },
-        ]);
-        setScene(accent.scene);
-        scheduleReturn("thinking", randomDelay(accent.duration));
-      });
-    }
-
-    function enterSearching() {
-      setScene(SCENES.searching);
-      scheduleTransition("activity", randomDelay([3500, 6500]), () => {
-        if (!stillIn("searching")) return;
-        const accent = chooseAccent("searching", [
-          { name: "curious", scene: SCENES.curious, weight: 0.45, duration: [1400, 2400] },
-          { name: "radar", scene: SCENES.radar, weight: 0.35, duration: [2500, 4000] },
-          { name: "thinking", scene: SCENES.deepThinking, weight: 0.2, duration: [1800, 3000] },
-        ]);
-        setScene(accent.scene);
-        scheduleReturn("searching", randomDelay(accent.duration));
-      });
-    }
-
-    function enterCoding() {
-      setScene(SCENES.coding);
-      scheduleTransition("activity", randomDelay([10_000, 16_000]), () => {
-        if (!stillIn("coding")) return;
-        setScene(SCENES.reviewing);
-        character.spinOnce();
-        scheduleReturn("coding", randomDelay([2200, 3200]));
-      });
-    }
-
-    function scheduleTerminalCheck() {
-      scheduleTransition("activity", randomDelay([4500, 7000]), () => {
-        if (!stillIn("terminal")) return;
-        const elapsed = now() - activityAt;
-        const hasRecentOutput = now() - lastProgressAt < 5000;
-        if (!hasRecentOutput && elapsed >= 20_000 && random() < 0.4) {
-          setScene(SCENES.bored);
-          scheduleTransition("activity", randomDelay([1400, 2400]), () => {
-            if (!stillIn("terminal")) return;
-            setScene(SCENES.loading);
-            scheduleTerminalCheck();
-          });
-          return;
-        }
-        setScene(SCENES.loading);
-        scheduleTerminalCheck();
-      });
-    }
-
-    function enterTerminal() {
-      setScene(SCENES.terminalTyping);
-      scheduleTransition("activity", randomDelay([650, 1100]), () => {
-        if (!stillIn("terminal")) return;
-        setScene(SCENES.loading);
-        scheduleTerminalCheck();
-      });
-    }
-
-    function enterReceiving() {
-      setScene(SCENES.receiving);
-      scheduleTransition("activity", randomDelay([5000, 8000]), () => {
-        if (!stillIn("receiving")) return;
-        setScene(SCENES.curious);
-        scheduleReturn("receiving", randomDelay([1200, 2200]));
-      });
-    }
-
-    function enterConsulting() {
-      setScene(SCENES.consulting);
-      scheduleTransition("activity", randomDelay([4000, 6500]), () => {
-        if (!stillIn("consulting")) return;
-        setScene(SCENES.deepThinking);
-        scheduleReturn("consulting", randomDelay([1800, 3000]));
-      });
-    }
-
-    function enterTooling() {
-      setScene(SCENES.tooling);
-      scheduleTransition("activity", randomDelay([4500, 7000]), () => {
-        if (!stillIn("tooling")) return;
-        setScene(SCENES.loading);
-        scheduleReturn("tooling", randomDelay([3000, 5000]));
-      });
-    }
-
-    function enterReplying() {
-      setScene(SCENES.replying);
-      scheduleTransition("activity", randomDelay([6000, 10_000]), () => {
-        if (!stillIn("replying")) return;
-        setScene(SCENES.listening);
-        scheduleReturn("replying", randomDelay([700, 1200]));
-      });
-    }
-
-    function waitForApproval() {
-      const elapsed = now() - activityAt;
-      setScene(elapsed >= 45_000 ? SCENES.bored : SCENES.listening);
-      scheduleTransition("activity", randomDelay([15_000, 25_000]), () => {
-        if (!stillIn("awaiting_approval")) return;
-        setScene(SCENES.notifying);
-        scheduleTransition("activity", 900, () => {
-          if (stillIn("awaiting_approval")) waitForApproval();
-        });
-      });
-    }
-
-    function enterApproval() {
-      setScene(SCENES.alerting);
-      scheduleTransition("activity", 1600, () => {
-        if (stillIn("awaiting_approval")) waitForApproval();
-      });
+    function stopDirector() {
+      if (state.kind === "idle") idle.stop();
+      else if (state.kind === "activity") activities.stop();
+      else if (state.kind === "cue") cues.cancel(false);
+      else if (state.kind === "interaction") timeline.cancel("interaction");
     }
 
     function enterActivity() {
-      clearTransition();
-      currentCue = null;
+      if (destroyed) return;
+      clearSwitch();
+      presenter.setGazeTarget(null);
       wakeBeforeActivity = false;
-      setGazeTarget(null);
       if (activity === "idle") {
-        if (!idleSession) resetIdleSession();
-        enterIdleDirector();
-        return;
-      }
-      mode = "activity";
-      switch (activity) {
-        case "thinking": enterThinking(); break;
-        case "searching": enterSearching(); break;
-        case "coding": enterCoding(); break;
-        case "terminal": enterTerminal(); break;
-        case "receiving": enterReceiving(); break;
-        case "consulting": enterConsulting(); break;
-        case "tooling": enterTooling(); break;
-        case "replying": enterReplying(); break;
-        case "awaiting_approval": enterApproval(); break;
+        setState("idle");
+        idle.start();
+      } else {
+        setState("activity");
+        activities.start(activity, activityAt);
       }
     }
 
-    function finishProtectedMode() {
-      const cue = pendingCue;
-      pendingCue = null;
-      if (cue) playCueNow(cue);
+    function finishProtected() {
+      if (destroyed) return;
+      if (cues.playPending()) setState("cue");
       else enterActivity();
     }
 
     function playWaking() {
-      clearTransition();
-      mode = "waking";
-      setGazeTarget(null);
-      setScene(SCENES.waking);
-      scheduleTransition("protected", WAKING_MS, finishProtectedMode);
-    }
-
-    function playCueSequence(cue, steps) {
-      clearTransition();
-      mode = "cue";
-      currentCue = cue;
-      let index = 0;
-      const play = () => {
-        if (mode !== "cue" || currentCue !== cue) return;
-        const step = steps[index];
-        if (!step) {
-          const pending = pendingCue;
-          pendingCue = null;
-          if (pending) playCueNow(pending);
-          else enterActivity();
-          return;
-        }
-        setScene(step.preserveEffect ? withReaction(step.scene) : step.scene);
-        if (step.wink) character.winkOnce();
-        index += 1;
-        scheduleTransition("cue", step.duration, play);
-      };
-      play();
-    }
-
-    function playCueNow(cue) {
-      interaction = null;
-      setGazeTarget(null);
-      const steps = SEQUENCES.cues[cue];
-      if (steps) playCueSequence(cue, steps);
-    }
-
-    function cuePriority(cue) {
-      return CUES[cue].priority;
+      clearSwitch();
+      stopDirector();
+      presenter.setGazeTarget(null);
+      setState("waking");
+      timeline.play(
+        "protected",
+        [{ scene: scenes.waking, duration: WAKING_MS }],
+        {
+          onComplete: finishProtected,
+        },
+      );
     }
 
     function requestCue(cue) {
       if (cue === "progress") {
-        lastProgressAt = now();
+        activities.progress();
         return;
       }
-      if (PROTECTED_MODES.has(mode)) {
-        if (!pendingCue || cuePriority(cue) > cuePriority(pendingCue)) pendingCue = cue;
+      if (state.kind === "startup" || state.kind === "waking") {
+        cues.request(cue, true);
         return;
       }
-      if (mode === "cue") {
-        if (currentCue === "reply_sent" && COMPLETION_CUES.has(cue)) {
-          pendingCue = cue;
-        } else if (cuePriority(cue) > cuePriority(currentCue)) {
-          playCueNow(cue);
-        } else if (!pendingCue || cuePriority(cue) > cuePriority(pendingCue)) {
-          pendingCue = cue;
-        }
+      if (state.kind === "cue") {
+        cues.request(cue);
         return;
       }
-      playCueNow(cue);
+      clearSwitch();
+      stopDirector();
+      interaction.cancel();
+      presenter.clearOverride();
+      presenter.setGazeTarget(null);
+      setState("cue");
+      cues.request(cue);
     }
 
     function scheduleActivitySwitch() {
-      scheduleTransition("activity-switch", ACTIVITY_SETTLE_MS, () => {
+      clearSwitch();
+      stopDirector();
+      setState("switching");
+      switchTimer = scheduler.setTimeout(() => {
+        switchTimer = null;
         if (activity !== "idle" && wakeBeforeActivity) playWaking();
         else enterActivity();
-      });
-    }
-
-    function leaveIdleSession() {
-      syncIdleDepth();
-      wakeBeforeActivity = idleDepth === "drowsy" || idleDepth === "sleeping";
-      idleSession = null;
-      idleRecoveryUntil = 0;
-      idleQuietUntil = 0;
-      pokeTimes = [];
+      }, ACTIVITY_SETTLE_MS);
     }
 
     function update(next) {
       if (
-        destroyed
-        || next === null
-        || typeof next !== "object"
-        || typeof next.activity !== "string"
-        || !hasOwn(ACTIVITIES, next.activity)
-      ) return false;
+        destroyed ||
+        state.kind === "preview" ||
+        next === null ||
+        typeof next !== "object" ||
+        typeof next.activity !== "string" ||
+        !hasOwn(ACTIVITIES, next.activity)
+      )
+        return false;
       const cue = next.cue;
-      if (cue !== undefined && (typeof cue !== "string" || !hasOwn(CUES, cue))) return false;
+      if (cue !== undefined && (typeof cue !== "string" || !hasOwn(CUES, cue)))
+        return false;
 
       const previousActivity = activity;
       const changed = next.activity !== activity;
       if (changed) {
-        if (previousActivity === "idle" && next.activity !== "idle") leaveIdleSession();
+        if (previousActivity === "idle" && next.activity !== "idle")
+          wakeBeforeActivity = idle.leave();
         activity = next.activity;
         activityAt = now();
-        if (activity === "idle") resetIdleSession(activityAt);
-        if (activity !== "terminal") lastProgressAt = -Infinity;
-        if (activity !== "idle" && mode === "cue" && COMPLETION_CUES.has(currentCue)) {
-          clearTransition();
-          currentCue = null;
-          mode = "activity";
-          pendingCue = null;
+        if (activity === "idle") idle.reset(activityAt);
+        if (activity !== "terminal") activities.resetProgress();
+        if (
+          activity !== "idle" &&
+          state.kind === "cue" &&
+          cues.isCompletion(cues.current())
+        ) {
+          cues.cancel();
+          setState("switching");
         }
-        if (mode === "interaction" || mode === "idle-fragment" || mode === "idle") {
-          interaction = null;
-          setGazeTarget(null);
-        }
+        if (state.kind === "interaction") interaction.cancel();
       }
 
       if (activity === "awaiting_approval" && cue === undefined) {
+        interaction.cancel();
         enterActivity();
         return true;
       }
       if (typeof cue === "string") {
         if (wakeBeforeActivity && activity !== "idle") {
-          pendingCue = cue;
+          cues.request(cue, true);
           playWaking();
         } else {
           requestCue(cue);
         }
         return true;
       }
-      if (PROTECTED_MODES.has(mode) || mode === "cue") return true;
+      if (
+        state.kind === "startup" ||
+        state.kind === "waking" ||
+        state.kind === "cue"
+      )
+        return true;
       if (changed) scheduleActivitySwitch();
       return true;
     }
 
-    function finishStartup() {
-      if (mode === "startup") finishProtectedMode();
-    }
-
-    function applyReducedMotion() {
-      character.setReduceMotion(motionQuery.matches || reduceMotionPreference);
-    }
-
-    function setPreferences(preferences) {
-      if (destroyed || preferences === null || typeof preferences !== "object") return false;
-      if (typeof preferences.shape === "string" && hasOwn(g.GROK_GEO.shapes, preferences.shape)) {
-        character.setShape(preferences.shape);
-      }
-      if (typeof preferences.color === "string" && hasOwn(g.GROK_GEO.palette, preferences.color)) {
-        character.setColor(preferences.color);
-      }
-      if (typeof preferences.body_color === "string") character.setInk(preferences.body_color);
-      if (typeof preferences.eye_color === "string") character.setEyeColor(preferences.eye_color);
-      if (preferences.scheme === "light" || preferences.scheme === "dark") {
-        character.setColor(character.colorId, preferences.scheme);
-      }
-      if (typeof preferences.followPointer === "boolean") character.setFollowPointer(preferences.followPointer);
-      if (typeof preferences.reduceMotion === "boolean") {
-        reduceMotionPreference = preferences.reduceMotion;
-        applyReducedMotion();
-      }
+    function showAction(name) {
+      if (destroyed || typeof name !== "string" || !ACTIONS.has(name))
+        return false;
+      clearSwitch();
+      stopDirector();
+      cues.cancel();
+      interaction.cancel();
+      presenter.clearOverride();
+      presenter.setGazeTarget(null);
+      setState("preview");
+      timeline.play(
+        "preview",
+        [
+          { state: name, duration: ACTION_PLAY_MS },
+          { pause: true, duration: ACTION_PAUSE_MS },
+        ],
+        { loop: true },
+      );
       return true;
     }
 
-    function onMotionChange() {
-      applyReducedMotion();
+    const interaction = g.O_PET_INTERACTION.create({
+      getActivity: () => activity,
+      idle,
+      interrupt() {
+        clearSwitch();
+        stopDirector();
+        cues.cancel();
+        setState("interaction");
+      },
+      now,
+      presenter,
+      presets,
+      returnToActivity: enterActivity,
+      scenes,
+      sequences,
+      timeline,
+      viewportWidth,
+    });
+
+    function onPointerStart(contact) {
+      const protectedMode =
+        state.kind === "startup" ||
+        state.kind === "waking" ||
+        state.kind === "preview";
+      interaction.start(contact, protectedMode);
     }
 
-    function onVisibilityChange() {
-      if (doc.hidden) {
-        if (hiddenAt === null) hiddenAt = rawNow();
-        pauseTransition();
-        character.setPaused(true);
-      } else {
-        if (hiddenAt !== null) {
-          hiddenDuration += rawNow() - hiddenAt;
-          hiddenAt = null;
-        }
-        character.setPaused(false);
-        armTransition();
-      }
-    }
-
-    function flushDrag() {
-      if (!pointer) return;
-      const dx = pointer.dx;
-      const dy = pointer.dy;
-      pointer.dx = 0;
-      pointer.dy = 0;
-      if (dx !== 0 || dy !== 0) options.postDrag({ phase: "move", dx, dy });
-    }
-
-    function onDragFrame() {
-      if (!pointer) return;
-      pointer.frame = null;
-      flushDrag();
-    }
-
-    function recordPoke() {
-      const cutoff = now() - POKE_WINDOW_MS;
-      pokeTimes = pokeTimes.filter((at) => at >= cutoff);
-      pokeTimes.push(now());
-      if (pokeTimes.length < POKE_THRESHOLD) return false;
-      pokeTimes = [];
-      return true;
-    }
-
-    function finishFullWake() {
-      interaction = null;
-      if (activity === "idle" && mode === "interaction-wake") enterIdleDirector();
-    }
-
-    function startFullWake() {
-      resetIdleSession(now());
-      const direction = chooseDirection("wake-stretch");
-      playSequence("interaction-wake", SEQUENCES.fullWake(direction), finishFullWake);
-    }
-
-    function finishQuizzical() {
-      if (!interaction || activity !== "idle") {
-        interaction = null;
-        enterActivity();
-        return;
-      }
-      if (interaction.fullWake) {
-        startFullWake();
-        return;
-      }
-      if (interaction.depth === "sleeping") {
-        idleRecoveryUntil = now() + randomDelay([20_000, 40_000]);
-      }
-      interaction = null;
-      enterIdleDirector();
-    }
-
-    function beginQuizzical() {
-      if (!interaction || activity !== "idle") {
-        interaction = null;
-        enterActivity();
-        return;
-      }
-      interaction.stage = "quizzical";
-      setGazeTarget(null);
-      const direction = chooseDirection("quizzical");
-      setScene(withDetails(SCENES.quizzical, { direction }));
-      mode = "interaction";
-      scheduleTransition("interaction", QUIZZICAL_MS, finishQuizzical);
-    }
-
-    function finishStartled() {
-      if (!interaction || interaction.stage !== "startled" || activity !== "idle") return;
-      setGazeTarget(null);
-      if (pointer) {
-        interaction.stage = "dragging";
-        setScene(SCENES.dragging);
-      } else {
-        beginQuizzical();
-      }
-    }
-
-    function contactDirection(clientX) {
-      const width = typeof g.innerWidth === "number" && g.innerWidth > 0 ? g.innerWidth : 1;
-      return clientX < width / 2 ? 1 : -1;
-    }
-
-    function onPointerDown(event) {
-      if (event.button !== 0 || pointer) return;
-      pointer = {
-        id: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-        dx: 0,
-        dy: 0,
-        frame: null,
-        moved: false,
-      };
-      doc.body.setPointerCapture(event.pointerId);
-      doc.body.classList.add("dragging");
-      options.postDrag({ phase: "start" });
-
-      if (PROTECTED_MODES.has(mode)) {
-        interaction = { idle: false, moved: false, stage: "dragging", visualOnly: true };
-        character.setPreset(SCENES.dragging, { resetEyes: false });
-        return;
-      }
-
-      const idleInteraction = activity === "idle";
-      const depth = idleInteraction ? idleDepthAt(now()) : null;
-      interaction = {
-        contact: { x: event.clientX, y: event.clientY },
-        depth,
-        fullWake: idleInteraction && recordPoke(),
-        idle: idleInteraction,
-        moved: false,
-        stage: depth === "sleeping" ? "startled" : "dragging",
-      };
-      clearTransition();
-      currentCue = null;
-      mode = "interaction";
-      if (depth === "sleeping") {
-        setGazeTarget(interaction.contact);
-        setScene(withDetails(SCENES.startled, { direction: contactDirection(event.clientX) }));
-        scheduleTransition("interaction", STARTLED_MS, finishStartled);
-      } else {
-        setScene(SCENES.dragging);
-      }
-    }
-
-    function onPointerMove(event) {
-      if (!pointer || event.pointerId !== pointer.id) return;
-      if ((event.buttons & 1) === 0) {
-        onPointerEnd(event);
-        return;
-      }
-      const dx = event.clientX - pointer.x;
-      const dy = event.clientY - pointer.y;
-      pointer.dx += dx;
-      pointer.dy += dy;
-      pointer.x = event.clientX;
-      pointer.y = event.clientY;
-      if (dx !== 0 || dy !== 0) {
-        pointer.moved = true;
-        if (interaction) interaction.moved = true;
-      }
-      if (pointer.frame === null) pointer.frame = frameClock.requestAnimationFrame(onDragFrame);
-    }
-
-    function onPointerEnd(event) {
-      if (!pointer || event.pointerId !== pointer.id) return;
-      if (pointer.frame !== null) frameClock.cancelAnimationFrame(pointer.frame);
-      flushDrag();
-      pointer = null;
-      doc.body.classList.remove("dragging");
-      options.postDrag({ phase: "end" });
-
-      if (!interaction) return;
-      if (interaction.visualOnly) {
-        interaction = null;
-        character.setPreset(currentScene, { resetEyes: false });
-        return;
-      }
-      if (!interaction.idle || activity !== "idle") {
-        interaction = null;
-        enterActivity();
-        return;
-      }
-      if (interaction.stage === "startled") return;
-      beginQuizzical();
+    function onPointerEnd() {
+      interaction.end();
     }
 
     function onPointerEnter() {
-      playUserGaze();
+      if (
+        activity === "idle" &&
+        !interaction.isActive() &&
+        state.kind === "idle"
+      )
+        idle.hover();
     }
+
+    function onVisibilityChange() {
+      if (doc.hidden) scheduler.pause("hidden");
+      else scheduler.resume("hidden");
+    }
+
+    const pointer = g.O_PET_POINTER.create({
+      document: doc,
+      frameClock,
+      onEnd: onPointerEnd,
+      onEnter: onPointerEnter,
+      onStart: onPointerStart,
+      onTrack: (point) => character.setPointerPosition(point),
+      postDrag: options.postDrag,
+      target: options.pointerTarget,
+    });
 
     function destroy() {
       if (destroyed) return;
       destroyed = true;
-      clearTransition();
-      if (pointer && pointer.frame !== null) frameClock.cancelAnimationFrame(pointer.frame);
-      pointer = null;
-      interaction = null;
-      pokeTimes = [];
-      recentFragments = [];
-      motionQuery.removeEventListener("change", onMotionChange);
+      clearSwitch();
       doc.removeEventListener("visibilitychange", onVisibilityChange);
-      doc.body.removeEventListener("pointerenter", onPointerEnter);
-      doc.body.removeEventListener("pointerdown", onPointerDown);
-      doc.body.removeEventListener("pointermove", onPointerMove);
-      doc.body.removeEventListener("pointerup", onPointerEnd);
-      doc.body.removeEventListener("pointercancel", onPointerEnd);
-      doc.body.removeEventListener("lostpointercapture", onPointerEnd);
+      pointer.destroy();
+      preferences.destroy();
+      cues.cancel();
+      idle.stop();
+      activities.stop();
+      interaction.cancel();
+      timeline.destroy();
+      presenter.destroy();
       character.destroy();
+      scheduler.destroy();
     }
 
-    resetIdleSession(activityAt);
-    motionQuery.addEventListener("change", onMotionChange);
+    idle.reset(activityAt);
     doc.addEventListener("visibilitychange", onVisibilityChange);
-    doc.body.addEventListener("pointerenter", onPointerEnter);
-    doc.body.addEventListener("pointerdown", onPointerDown);
-    doc.body.addEventListener("pointermove", onPointerMove);
-    doc.body.addEventListener("pointerup", onPointerEnd);
-    doc.body.addEventListener("pointercancel", onPointerEnd);
-    doc.body.addEventListener("lostpointercapture", onPointerEnd);
-    applyReducedMotion();
-    scheduleTransition("protected", STARTUP_MS, finishStartup);
-    if (doc.hidden) character.setPaused(true);
+    if (doc.hidden) scheduler.pause("hidden");
+    timeline.play(
+      "protected",
+      [{ scene: scenes.spawning, duration: STARTUP_MS }],
+      {
+        onComplete: finishProtected,
+      },
+    );
 
-    return Object.freeze({ destroy, setPreferences, update });
+    return Object.freeze({
+      destroy,
+      setPreferences: preferences.set,
+      showAction,
+      update,
+    });
   }
 
   g.OPetRenderer = Object.freeze({ create });

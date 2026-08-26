@@ -1,0 +1,22 @@
+[
+  {
+    "label": "Lifecycle",
+    "states": ["sleeping", "dreaming", "waking", "idle", "listening", "thinking", "searching", "working"]
+  },
+  {
+    "label": "Reactions",
+    "states": ["excited", "surprised", "startled", "suspicious", "angry", "drowsy", "happy", "winking", "curious", "confused", "quizzical", "bored", "proud", "shy", "sad", "laughing", "scared", "playful", "celebrate"]
+  },
+  {
+    "label": "Agent morphs",
+    "states": ["orbit", "radar"]
+  },
+  {
+    "label": "Interaction",
+    "states": ["stretching", "front"]
+  },
+  {
+    "label": "Product lifecycle",
+    "states": ["spawning", "humming", "loading", "dictating", "writing", "sending", "receiving", "uploading", "notifying", "alerting", "dragging", "bouncing", "powering-down"]
+  }
+]

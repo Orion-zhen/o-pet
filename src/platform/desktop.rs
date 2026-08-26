@@ -112,15 +112,12 @@ struct MonitorChoice {
     geometry: MonitorGeometry,
 }
 
-pub(super) fn run() -> Result<(), Box<dyn Error>> {
+pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
     let config = Config::load().map_err(|error| {
         io::Error::new(
             error.kind(),
             format!("无法读取 ~/.config/o-pet/config.toml: {error}"),
         )
-    })?;
-    let endpoint = ipc::resolve_endpoint().map_err(|error| {
-        io::Error::new(error.kind(), format!("无法确定 o-pet IPC 端点: {error}"))
     })?;
     let mut event_loop_builder = EventLoopBuilder::<UserEvent>::with_user_event();
     #[cfg(target_os = "windows")]
@@ -145,10 +142,19 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
     let (window_x, window_y) = placement.physical_origin(selected.geometry);
 
     let proxy = event_loop.create_proxy();
-    let server = ipc::Server::bind(&endpoint, move |update| {
-        let _ = proxy.send_event(UserEvent::Animation(update));
-    })
-    .map_err(|error| endpoint_error(&endpoint, error))?;
+    let server = if action.is_none() {
+        let endpoint = ipc::resolve_endpoint().map_err(|error| {
+            io::Error::new(error.kind(), format!("无法确定 o-pet IPC 端点: {error}"))
+        })?;
+        Some(
+            ipc::Server::bind(&endpoint, move |update| {
+                let _ = proxy.send_event(UserEvent::Animation(update));
+            })
+            .map_err(|error| endpoint_error(&endpoint, error))?,
+        )
+    } else {
+        None
+    };
 
     let window = native::window_builder(
         WindowBuilder::new()
@@ -202,7 +208,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
     let preferences = config.renderer;
     let mut latest_update = AnimationUpdate::steady(Activity::Idle);
     let mut page_ready = false;
-    let mut server = Some(server);
+    let mut server = server;
     let mut tray = None;
     event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -241,7 +247,11 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
             Event::UserEvent(UserEvent::Page(PageMessage::Ready)) => {
                 page_ready = true;
                 send_preferences(&webview, &preferences);
-                send_update(&webview, latest_update);
+                if let Some(action) = &action {
+                    show_action(&webview, action);
+                } else {
+                    send_update(&webview, latest_update);
+                }
             }
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
                 phase: DragPhase::Start,
@@ -438,6 +448,13 @@ fn send_preferences(webview: &WebView, preferences: &RendererPreferences) {
     let payload = serde_json::to_string(preferences).expect("renderer preferences must serialize");
     if let Err(error) = webview.evaluate_script(&format!("window.oPet.setPreferences({payload})")) {
         eprintln!("无法向渲染页面发送配置: {error}");
+    }
+}
+
+fn show_action(webview: &WebView, action: &str) {
+    let payload = serde_json::to_string(action).expect("action name must serialize");
+    if let Err(error) = webview.evaluate_script(&format!("window.oPet.showAction({payload})")) {
+        eprintln!("无法向渲染页面发送动画预设: {error}");
     }
 }
 

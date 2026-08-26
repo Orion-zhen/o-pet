@@ -18,8 +18,8 @@ use windows::Win32::{
     },
 };
 
-pub(crate) fn run() {
-    if let Err(error) = super::desktop::run() {
+pub(crate) fn run(action: Option<String>) {
+    if let Err(error) = super::desktop::run(action) {
         eprintln!("无法启动 o-pet Windows 后端: {error}");
         std::process::exit(1);
     }

@@ -2,7 +2,10 @@
 (function (g) {
   const spring = (x) => ({ x, v: 0, t: x });
   const stepSpring = (state, frequency, damping, dt) => {
-    state.v += (-2 * damping * frequency * state.v - frequency * frequency * (state.x - state.t)) * dt;
+    state.v +=
+      (-2 * damping * frequency * state.v -
+        frequency * frequency * (state.x - state.t)) *
+      dt;
     state.x += state.v * dt;
     if (!Number.isFinite(state.x) || !Number.isFinite(state.v)) {
       state.x = state.t;
@@ -11,21 +14,19 @@
   };
   const DT = 1 / 120;
   const springSteps = (dt) => Math.max(1, Math.ceil(dt / DT));
-  const clamp = (number, minimum, maximum) => Math.min(maximum, Math.max(minimum, number));
+  const clamp = (number, minimum, maximum) =>
+    Math.min(maximum, Math.max(minimum, number));
   const lerp = (from, to, amount) => from + (to - from) * amount;
-  const rand = (minimum, maximum) => minimum + Math.random() * (maximum - minimum);
-  const sign = () => (Math.random() < 0.5 ? -1 : 1);
-  const K2 = (amount) => (
+  const K2 = (amount) =>
     amount < 0.5
       ? 4 * amount * amount * amount
-      : 1 - Math.pow(-2 * amount + 2, 3) / 2
-  );
+      : 1 - Math.pow(-2 * amount + 2, 3) / 2;
   const Rc = (amount) => 1 - Math.pow(1 - amount, 3);
-  const y1e = (amount) => (
-    1 + 2.70158 * Math.pow(amount - 1, 3) + 1.70158 * Math.pow(amount - 1, 2)
-  );
+  const y1e = (amount) =>
+    1 + 2.70158 * Math.pow(amount - 1, 3) + 1.70158 * Math.pow(amount - 1, 2);
   const Dke = (amount) => amount * amount * (3 - 2 * amount);
-  const x_t = (amount, elapsed) => 1 - Math.exp(Math.log(1 - amount) * 60 * elapsed);
+  const x_t = (amount, elapsed) =>
+    1 - Math.exp(Math.log(1 - amount) * 60 * elapsed);
   const Rn = (amount, elapsed = 1 / 60) => x_t(amount, elapsed);
 
   function rot3(turn, tilt, roll) {
@@ -65,28 +66,42 @@
     ];
   }
 
-  function mapPointer(rect, point, distanceScale = 0.6, horizontalRadius = 22, verticalRadius = 14, reach = 2) {
+  function mapPointer(
+    rect,
+    point,
+    distanceScale = 0.6,
+    horizontalRadius = 22,
+    verticalRadius = 14,
+    reach = 2,
+  ) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const deltaX = point.x - centerX;
     const deltaY = point.y - centerY;
-    const distance = Math.min(1, Math.sqrt(Math.hypot(deltaX, deltaY) / (rect.width * reach)));
+    const distance = Math.min(
+      1,
+      Math.sqrt(Math.hypot(deltaX, deltaY) / (rect.width * reach)),
+    );
     const angle = Math.atan2(deltaY, deltaX);
     return {
-      x: centerX + distanceScale * (verticalRadius / horizontalRadius) * distance * Math.cos(angle) * rect.width,
+      x:
+        centerX +
+        distanceScale *
+          (verticalRadius / horizontalRadius) *
+          distance *
+          Math.cos(angle) *
+          rect.width,
       y: centerY + distanceScale * distance * Math.sin(angle) * rect.height,
     };
   }
 
-  g.GROK_MATH = Object.freeze({
+  const core = Object.freeze({
     spring,
     stepSpring,
     DT,
     springSteps,
     clamp,
     lerp,
-    rand,
-    sign,
     K2,
     Rc,
     y1e,
@@ -97,4 +112,15 @@
     relRot,
     mapPointer,
   });
+
+  function create(random) {
+    return Object.freeze({
+      ...core,
+      random,
+      rand: (minimum, maximum) => minimum + random() * (maximum - minimum),
+      sign: () => (random() < 0.5 ? -1 : 1),
+    });
+  }
+
+  g.GROK_MATH = Object.freeze({ ...core, create });
 })(window);

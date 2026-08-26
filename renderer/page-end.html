@@ -1,16 +1,26 @@
 
-		window.oPetRenderer = window.OPetRenderer.create({
-			svg: document.getElementById("pet"),
-			postDrag(message) {
-				window.oPetNative.postDrag(message);
-			},
-		});
-		window.oPet = Object.freeze({
-			setPreferences: window.oPetRenderer.setPreferences,
-			update: window.oPetRenderer.update,
-		});
-		window.oPetNative.ready?.();
-		window.addEventListener("pagehide", window.oPetRenderer.destroy, { once: true });
+			const renderer = window.OPetRenderer.create({
+				clock: browser,
+				document: browser.document,
+				frameClock: browser,
+				motionQuery: browser.matchMedia("(prefers-reduced-motion: reduce)"),
+				now: () => browser.performance.now(),
+				pointerTarget: browser,
+				random: browser.Math.random,
+				svg: browser.document.getElementById("pet"),
+				viewportWidth: () => browser.innerWidth,
+				postDrag(message) {
+					browser.oPetNative.postDrag(message);
+				},
+			});
+			browser.oPet = Object.freeze({
+				setPreferences: renderer.setPreferences,
+				showAction: renderer.showAction,
+				update: renderer.update,
+			});
+			browser.oPetNative.ready?.();
+			browser.addEventListener("pagehide", renderer.destroy, { once: true });
+		})(globalThis);
 	</script>
 </body>
 </html>

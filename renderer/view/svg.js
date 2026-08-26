@@ -1,49 +1,54 @@
 /* SVG 帧渲染器。把已混合的控制器状态投影为身体、眼睛、装饰和相机。 */
 (function (g) {
-  const { clamp, K2, Dke, relRot } = g.GROK_MATH;
-  const GEO = g.GROK_GEOMETRY;
-  const FX = g.GROK_EFFECTS;
-  const PARTICLES = g.GROK_PARTICLES;
-  const EY = g.GROK_EYES;
-  const { cameraZoomFor, VIEW_HALF, VIEW_MID } = g.GROK_TABLES;
-  const { lerpFace } = GEO;
+  function create(dependencies, options) {
+    const { clamp, K2, Dke, relRot } = dependencies.math;
+    const GEO = dependencies.geometry;
+    const FX = dependencies.effects;
+    const PARTICLES = dependencies.particles;
+    const EY = dependencies.eyes;
+    const DATA = dependencies.data;
+    const { cameraZoomFor, VIEW_HALF, VIEW_MID } = dependencies.tables;
+    const { lerpFace } = GEO;
 
-  function build(character) {
-      const geo = g.GROK_GEO;
+    function build(character, doc, random, rand) {
+      const geo = DATA;
       const vb = geo.viewBox;
-      character.svg.setAttribute("viewBox", `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`);
+      character.svg.setAttribute(
+        "viewBox",
+        `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`,
+      );
       character.svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       character.svg.style.overflow = "visible";
       character.svg.innerHTML = "";
       const ns = "http://www.w3.org/2000/svg";
-      const defs = document.createElementNS(ns, "defs");
-      const clip = document.createElementNS(ns, "clipPath");
-      const clipId = `grok-clip-${Math.random().toString(36).slice(2, 8)}`;
+      const defs = doc.createElementNS(ns, "defs");
+      const clip = doc.createElementNS(ns, "clipPath");
+      const clipId = `grok-clip-${random().toString(36).slice(2, 8)}`;
       clip.setAttribute("id", clipId);
-      character.clipPath = document.createElementNS(ns, "path");
+      character.clipPath = doc.createElementNS(ns, "path");
       clip.appendChild(character.clipPath);
       defs.appendChild(clip);
       character.svg.appendChild(defs);
 
-      character.group = document.createElementNS(ns, "g");
-      character.body = document.createElementNS(ns, "path");
+      character.group = doc.createElementNS(ns, "g");
+      character.body = doc.createElementNS(ns, "path");
       character.body.setAttribute("fill", "var(--fg, #000)");
-      const eyesG = document.createElementNS(ns, "g");
+      const eyesG = doc.createElementNS(ns, "g");
       eyesG.setAttribute("clip-path", `url(#${clipId})`);
       character.eyesG = eyesG;
       character.eyeEls = [0, 1].map(() => {
-        const p = document.createElementNS(ns, "path");
+        const p = doc.createElementNS(ns, "path");
         p.setAttribute("fill", "var(--bg, #f3efe6)");
         eyesG.appendChild(p);
         return p;
       });
-      character.badge = document.createElementNS(ns, "circle");
+      character.badge = doc.createElementNS(ns, "circle");
       character.badge.setAttribute("style", "display:none");
       character.group.appendChild(character.body);
       character.group.appendChild(eyesG);
       character.group.appendChild(character.badge);
 
-      character.fx = new FX.OverlayLayer();
+      character.fx = new FX.OverlayLayer({ document: doc, random, rand });
       const R = geo.Re;
       character.fx.circlePath = GEO.circlePathOf(R);
       character.fx.pencilPath = GEO.capsule(30, 88, R);
@@ -51,34 +56,48 @@
       character.fx.attach(character.svg, character.group);
       character.particles = PARTICLES.create({
         back: character.fx.back,
+        clamp,
+        data: DATA,
         front: character.fx.front,
         idPrefix: character.fx.uid,
+        document: doc,
+        random,
+        rand,
         getRadius: () => {
           const sh = geo.shapes[character.shapeName];
           const k = K2(clamp(character.shapeSpring.x, 0, 1));
-          const to = sh?.beltRadius || GEO.shapeModel(character.shapeName).beltRadius;
-          let je = k < 0.999 && character.prevBelt != null
-            ? character.prevBelt + (to - character.prevBelt) * k
-            : to;
-          if (character.formState === "whirl") je += (52 - je) * clamp(character.formBlend.x, 0, 1);
+          const to =
+            sh?.beltRadius || GEO.shapeModel(character.shapeName).beltRadius;
+          let je =
+            k < 0.999 && character.prevBelt != null
+              ? character.prevBelt + (to - character.prevBelt) * k
+              : to;
+          if (character.formState === "whirl")
+            je += (52 - je) * clamp(character.formBlend.x, 0, 1);
           return je;
         },
       });
       character.body.setAttribute("d", geo.shapes[character.shapeName].path);
-      character.clipPath.setAttribute("d", geo.shapes[character.shapeName].path);
-  }
+      character.clipPath.setAttribute(
+        "d",
+        geo.shapes[character.shapeName].path,
+      );
+    }
 
-  function paint(character, now) {
-      const geo = g.GROK_GEO;
+    function paint(character, now) {
+      const geo = DATA;
       const R = geo.Re;
       const shape = geo.shapes[character.shapeName];
       const morphK = K2(clamp(character.shapeSpring.x, 0, 1));
       const morphing = morphK < 0.999 && character.prevFace;
-      const face = morphing ? lerpFace(character.prevFace, shape.face, morphK) : shape.face;
-      const fromTilt = character.prevTilt ?? (geo.shapes[character.prevShape]?.tiltScale || 1);
+      const face = morphing
+        ? lerpFace(character.prevFace, shape.face, morphK)
+        : shape.face;
+      const fromTilt =
+        character.prevTilt ?? (geo.shapes[character.prevShape]?.tiltScale || 1);
       const tilt = morphing
         ? fromTilt + ((shape.tiltScale || 1) - fromTilt) * morphK
-        : (shape.tiltScale || 1);
+        : shape.tiltScale || 1;
       const yl = clamp(character.formBlend.x, 0, 1);
       const mix = clamp(character.formMix.x, 0, 1);
       const decorationAmount = clamp(character.decorationBlend.x, 0, 1);
@@ -86,35 +105,56 @@
       const cameraAmount = clamp(character.cameraBlend.x, 0, 1);
       const cameraMix = clamp(character.cameraMix.x, 0, 1);
       character.fx._reduce = character.reduceMotion;
-      const ov = character.fx.sampleForm(now, character.formAt, character.formKind, character.formPrev, yl, mix);
+      const ov = character.fx.sampleForm(
+        now,
+        character.formAt,
+        character.formKind,
+        character.formPrev,
+        yl,
+        mix,
+      );
       const bodyW = 1 - yl;
       const ex = character.extras;
       const tx = character.tx.x * bodyW + ex.xOffsetPx * bodyW + ov.xPx * yl;
-      const ty = (character.ty.x + ex.hopYPx) * bodyW + ex.yOffsetPx * bodyW
-        - ov.dotPulse.lift * ov.dotsAmount + ov.yPx * yl;
-      const rot = (character.spin.x * bodyW + ex.rollOffsetDeg * bodyW) * tilt
-        + (ex.freeRollDeg || 0) * bodyW + ov.rollDeg * yl;
+      const ty =
+        (character.ty.x + ex.hopYPx) * bodyW +
+        ex.yOffsetPx * bodyW -
+        ov.dotPulse.lift * ov.dotsAmount +
+        ov.yPx * yl;
+      const rot =
+        (character.spin.x * bodyW + ex.rollOffsetDeg * bodyW) * tilt +
+        (ex.freeRollDeg || 0) * bodyW +
+        ov.rollDeg * yl;
       const sx = bodyW + ov.radiusScale * yl;
       const sy = character.squash.x * bodyW + ov.radiusScale * yl;
       character.group.setAttribute(
         "transform",
-        `translate(${(R + tx).toFixed(2)} ${(R + ty).toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-R} ${-R})`
+        `translate(${(R + tx).toFixed(2)} ${(R + ty).toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-R} ${-R})`,
       );
       character.group.style.opacity = (
-        (1 - (1 - ov.dotPulse.tone) * ov.dotsAmount) * (1 - ov.opacityFade)
+        (1 - (1 - ov.dotPulse.tone) * ov.dotsAmount) *
+        (1 - ov.opacityFade)
       ).toFixed(3);
 
       const Jc = clamp(yl / FX.FORM_MORPH_THRESHOLD, 0, 1);
-      const pencil = character.formKind === "pencil" || character.formPrev === "pencil";
+      const pencil =
+        character.formKind === "pencil" || character.formPrev === "pencil";
       const tear = geo.shapes.teardrop?.path;
       const spinAmt = ex.turnRadians;
       const spinning = spinAmt != null;
       const restRing = morphing
-        ? GEO.lerpRing(character.prevRing, GEO.shapeModel(character.shapeName).ring, morphK)
+        ? GEO.lerpRing(
+            character.prevRing,
+            GEO.shapeModel(character.shapeName).ring,
+            morphK,
+          )
         : GEO.shapeModel(character.shapeName).ring;
       let liveRing = restRing;
       let turned = false;
-      const turnAt = !morphing && spinning ? GEO.shapeModel(character.shapeName).turnAt : null;
+      const turnAt =
+        !morphing && spinning
+          ? GEO.shapeModel(character.shapeName).turnAt
+          : null;
       if (turnAt) {
         liveRing = turnAt(spinAmt);
         turned = true;
@@ -131,12 +171,20 @@
       }
       let bodyD;
       if (Jc >= 1) {
-        bodyD = pencil ? GEO.closedSpline(GEO.formRing(character.formKind, R, tear)) : character.fx.circlePath;
+        bodyD = pencil
+          ? GEO.closedSpline(GEO.formRing(character.formKind, R, tear))
+          : character.fx.circlePath;
       } else if (Jc <= 0 && !morphing && !turned) {
         bodyD = shape.path;
       } else {
-        const to = GEO.formRing(character.formKind || character.formPrev, R, tear);
-        bodyD = GEO.closedSpline(Jc <= 0 ? liveRing : GEO.lerpRing(liveRing, to, K2(Jc)));
+        const to = GEO.formRing(
+          character.formKind || character.formPrev,
+          R,
+          tear,
+        );
+        bodyD = GEO.closedSpline(
+          Jc <= 0 ? liveRing : GEO.lerpRing(liveRing, to, K2(Jc)),
+        );
       }
       character.body.setAttribute("d", bodyD);
       character.clipPath.setAttribute("d", bodyD);
@@ -156,26 +204,41 @@
       const pScale = character.pose.scale || 1;
       const zCur = cameraZoomFor(character.cameraKind, pScale);
       const zPrev = cameraZoomFor(character.cameraPrev, pScale);
-      const zoom = 1 + (
-        zCur * cameraMix + zPrev * (1 - cameraMix) - 1
-      ) * cameraAmount * shrink;
+      const zoom =
+        1 +
+        (zCur * cameraMix + zPrev * (1 - cameraMix) - 1) *
+          cameraAmount *
+          shrink;
       const half = VIEW_HALF / zoom;
-      character.svg.setAttribute("viewBox", `${(VIEW_MID - half).toFixed(2)} ${(VIEW_MID - half).toFixed(2)} ${(half * 2).toFixed(2)} ${(half * 2).toFixed(2)}`);
+      character.svg.setAttribute(
+        "viewBox",
+        `${(VIEW_MID - half).toFixed(2)} ${(VIEW_MID - half).toFixed(2)} ${(half * 2).toFixed(2)} ${(half * 2).toFixed(2)}`,
+      );
 
       const morphT = clamp(character.eyeMorph.x, 0, 1);
-      const polys = character._currentPolys(morphT);
-      const cr = character.eyeTopology ? relRot(character.pose, character.poseHome) : null;
-      const overlayLive = yl > 0.001 || Math.abs(character.formTurn.t - character.formTurn.x) > 0.01;
+      const polys = character.eyePolys;
+      const cr = character.eyeTopology
+        ? relRot(character.pose, character.poseHome)
+        : null;
+      const overlayLive =
+        yl > 0.001 ||
+        Math.abs(character.formTurn.t - character.formTurn.x) > 0.01;
       let cyl = overlayLive ? character.formTurn.x : null;
       if (ex.turnRadians != null) cyl = (cyl ?? 0) + ex.turnRadians;
       const ringHint = morphing || turned ? liveRing : null;
-      const steadyGaze = character.gazeState === "front" || character.gazeState === "sleeping";
-      const hasPtr = !steadyGaze && !!(character.gazeTarget || (character.followPointer && character.pointerRaw));
+      const steadyGaze =
+        character.gazeState === "front" || character.gazeState === "sleeping";
+      const hasPtr =
+        !steadyGaze &&
+        !!(
+          character.gazeTarget ||
+          (character.followPointer && character.pointerRaw)
+        );
       character.eyesG.setAttribute(
         "transform",
         Math.abs(character.faceRoll) > 0.01
           ? `rotate(${character.faceRoll.toFixed(2)} ${R} ${R})`
-          : ""
+          : "",
       );
       EY.paintEyes({
         now,
@@ -210,7 +273,6 @@
         badgeRing: restRing,
         top: faceTop,
         bottom: faceBottom,
-        emphasisBlend: character.emphasisBlend,
       });
 
       const hum = clamp(character.humDots.x, 0, 1);
@@ -229,7 +291,50 @@
           el.setAttribute("opacity", ((0.3 + 0.7 * Si) * hum).toFixed(3));
         }
       }
+    }
+
+    function createRenderer(options) {
+      const view = {
+        svg: options.svg,
+        shapeName: options.initialShape,
+        shapeSpring: { x: 1 },
+        prevBelt: null,
+        formState: null,
+        formBlend: { x: 0 },
+      };
+      build(view, options.document, options.random, options.rand);
+
+      return Object.freeze({
+        bounds: () => view.svg.getBoundingClientRect(),
+        burst: (...args) => view.particles.burst(...args),
+        destroy() {
+          view.particles.clear();
+          view.svg.innerHTML = "";
+        },
+        render(frame) {
+          Object.assign(view, frame);
+          view.fx.overlayAt = frame.formOverlayAt;
+          paint(view, frame.now);
+        },
+        resetInk: () => view.fx.resetInk(),
+        resetPlayback() {
+          view.particles.reset(0);
+          view.fx.hideAll();
+          view.fx.resetInk();
+        },
+        setReduceMotion: (value) => view.particles.setReduceMotion(value),
+        setStyle(name, value) {
+          view.svg.style.setProperty(name, value);
+        },
+        setViewportStyle(name, value) {
+          view.svg.style[name] = value;
+        },
+        updateParticles: (...args) => view.particles.update(...args),
+      });
+    }
+
+    return createRenderer(options);
   }
 
-  g.GROK_RENDER = Object.freeze({ build, paint });
+  g.GROK_RENDER = Object.freeze({ create });
 })(window);
