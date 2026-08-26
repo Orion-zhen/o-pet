@@ -1,7 +1,7 @@
 /* OPet 几何内核。集中处理路径采样、轮廓变形、截面和形状派生数据。 */
 (function (g) {
   function create(dependencies) {
-    const { clamp } = dependencies.math;
+    const { clamp, K2 } = dependencies.math;
     const DATA = dependencies.data;
     const DEFAULT_RING_POINTS = 96;
     const DEFAULT_SPAN_ROWS = 160;
@@ -537,6 +537,30 @@
       return path;
     }
 
+    function deformRing(ring, center, deformation) {
+      return ring.map(([x, y]) => {
+        const dx = x - center;
+        const dy = y - center;
+        const radius = Math.hypot(dx, dy) || 1;
+        const angle = Math.atan2(dy, dx);
+        let radial =
+          deformation.waveAmount *
+          2.6 *
+          Math.sin(angle * 3 + deformation.wavePhase);
+        for (const bump of deformation.bumps) {
+          const distance = Math.abs(
+            Math.atan2(
+              Math.sin(angle - bump.angle),
+              Math.cos(angle - bump.angle),
+            ),
+          );
+          const amount = clamp(1 - distance / bump.width, 0, 1);
+          radial += bump.amount * K2(amount);
+        }
+        return [x + (dx / radius) * radial, y + (dy / radius) * radial];
+      });
+    }
+
     function formRing(kind, center, teardropPath) {
       if (kind === "pencil" && teardropPath) {
         return rotateRing(
@@ -573,6 +597,7 @@
       shapeModel,
       shapeMetrics,
       circlePathOf,
+      deformRing,
       formRing,
     });
   }

@@ -17,7 +17,7 @@ pub(crate) const MIN_SIZE: i32 = 64;
 
 const DEFAULT_BODY_COLOR: &str = "radial-gradient(circle at 28% 20% in oklch, oklch(72% 0.015 85), oklch(59% 0.022 75), oklch(47% 0.028 65))";
 const DEFAULT_EYE_COLOR: &str = "#fffaf0";
-const DEFAULT_SHAPE: &str = "blob";
+const DEFAULT_SHAPE: &str = "pebble";
 const SHAPES: &[&str] = &[
     "blob", "pebble", "bean", "egg", "squircle", "tablet", "capsule", "cylinder", "hex", "gem",
     "crystal", "wedge", "shield", "dome", "arch", "cloud", "teardrop", "leaf",

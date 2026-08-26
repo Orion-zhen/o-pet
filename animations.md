@@ -14,7 +14,7 @@ AgentEvent
   -> idle / activities / cues / interaction 导演
   -> 单一有限 timeline
   -> presenter 切换场景或触发一次性动作
-  -> preset 解析 9 个控制通道
+  -> preset 解析 10 个控制通道
   -> character 每帧采样控制器并推进弹簧
   -> SVG 视图
 ```
@@ -36,12 +36,13 @@ AgentEvent
 
 ## 2. 场景和步骤
 
-一个场景固定包含 9 个正交通道：
+一个场景固定包含 10 个正交通道：
 
 - `motion`：身体姿态和位移
 - `face`：脸部姿态
 - `expression`：眼形、眼睑和眼睛缩放
 - `gaze`：程序化视线
+- `shape`：临时身形覆盖；场景退出时恢复用户配置身形
 - `form`：身体形变特效
 - `decoration`：装饰
 - `particles`：粒子
@@ -197,7 +198,7 @@ idle(drowsy/sleeping) + cue
 
 | 活动 | 循环链 | 选择条件或附加动作 |
 | --- | --- | --- |
-| `thinking` | `thinking` 3–6 s -> 强调场景 -> 重复 | `humming` 6–9 s，权重 72%。`deepThinking` 3.5–5.5 s，权重 18%。`radar` 3.2–4.8 s，权重 10% |
+| `thinking` | `thinking` 3–6 s -> 强调场景 -> 重复 | `humming` 6–9 s，权重 40%。`thinking-alt` 6–9 s，权重 36%。`deepThinking` 3.5–5.5 s，权重 16%。`radar` 3.2–4.8 s，权重 8% |
 | `searching` | `searching` 3.5–6.5 s -> 强调场景 -> 重复 | `curious` 1.4–2.4 s，权重 45%。`radar` 2.5–4 s，权重 35%。`deepThinking` 1.8–3 s，权重 20% |
 | `coding` | `coding` 10–16 s -> `reviewing` 2.2–3.2 s -> 重复 | 进入 `reviewing` 时旋转 1 圈 |
 | `terminal` | 首轮 `terminalTyping` 0.65–1.1 s -> `loading` 4.5–7 s。后续通常只循环 `loading` | 活动至少持续 20 s、最近 5 s 没有 `progress`、且随机值小于 0.4 时，在两轮 `loading` 间插入 `bored` 1.4–2.4 s |
@@ -216,6 +217,7 @@ idle(drowsy/sleeping) + cue
 | 场景 | 身体动作 | 表情 | 主要特效 | 视线 |
 | --- | --- | --- | --- | --- |
 | `thinking` | `thinking` | `thinking` | 无 | `thinking` |
+| `thinking-alt` | `thinking-alt`，丝滑切换为略微缩小上移的 `cloud` 身形；轮廓缓慢起伏，并以明显的纵向舒展和横向收放持续呼吸、拉伸和回弹 | `thinking` | 至少两个思考圆点沿弧线上升，接触身体时与局部鼓起的边缘融合，再进入身体并随鼓包回落而被吸收 | `thinking` |
 | `deepThinking` | `thinking` | `curious` | `thinking` 圆点 | `thinking` |
 | `humming` | `humming` | `thinking` | 哼唱圆点和宽旋转粒子带 | `thinking` |
 | `radar` | `thinking` | `searching` | `radar` | `searching` |
@@ -233,7 +235,7 @@ idle(drowsy/sleeping) + cue
 
 | 活动 | 拟人化描述 |
 | --- | --- |
-| `thinking` | 它先安静地反复推敲，再偶尔哼着小调整理思路、钻进更深的思考，或像打开雷达一样寻找突破口。强调场景让“持续思考”看起来不是机械等待，而是有灵感起伏的内心活动。 |
+| `thinking` | 它先安静地反复推敲，再偶尔化作云朵吸收逐渐成形的念头、哼着小调整理思路、钻进更深的思考，或像打开雷达一样寻找突破口。强调场景让“持续思考”看起来不是机械等待，而是有灵感起伏的内心活动。 |
 | `searching` | 它先专注地扫视信息，然后因为发现线索而好奇靠近、扩大搜索范围，或停下来重新判断方向。整条链像“搜索 -> 发现疑点 -> 调整策略”。 |
 | `coding` | 它长时间埋头书写，阶段末抬头审视成果并转一圈换换脑子，再投入下一轮。旋转可以理解为一次带成就感的思维刷新。 |
 | `terminal` | 它先快速敲下命令，然后盯着执行结果等待。长时间没有输出时，它会短暂走神和无聊。新输出会重新唤起注意力。 |
@@ -526,7 +528,7 @@ quizzical 2200 ms
 
 ## 10. 动作预设的拟人化词典
 
-本节描述 `showAction()` 可直接预览的 44 个原子动作。原子动作提供角色词汇，前文的活动链和空闲片段则把这些词汇组织成句子和故事。
+本节描述 `showAction()` 可直接预览的 45 个原子动作。原子动作提供角色词汇，前文的活动链和空闲片段则把这些词汇组织成句子和故事。
 
 ### 10.1 生命周期
 
@@ -538,6 +540,7 @@ quizzical 2200 ms
 | `idle` | 平静呼吸、轻微摇摆并偶尔转移重心，表现没有任务但仍保持在场。 |
 | `listening` | 身体朝注意方向倾斜并偶尔点头，表现正在接收信息，而不是等待自己发言。 |
 | `thinking` | 身体缓慢偏转和游移，视线向侧上方寻找答案，表现思绪在内部来回推演。 |
+| `thinking-alt` | 身体丝滑化作略微缩小上移、呼吸变化明显的云朵，为下方多个圆点留出完整路径。圆点接触身体时与局部鼓起的边缘融合，再逐渐进入身体。身体边缘随圆点进入而恢复平滑，并通过整体拉伸和回弹表现吸收反馈。结束时恢复用户配置的身形。 |
 | `searching` | 身体和视线快速扫描不同方向，偶尔旋转扩大观察范围，表现主动寻找目标。 |
 | `working` | 保持连续、规律的操作节奏，视线偏向工作区域，表现手头任务正在稳定推进。 |
 
@@ -601,7 +604,7 @@ quizzical 2200 ms
 
 ## 11. 预览模式
 
-`showAction(name)` 只接受 `renderer/catalog/action-groups.json` 中的 44 个动作名。每轮按以下链播放：
+`showAction(name)` 只接受 `renderer/catalog/action-groups.json` 中的 45 个动作名。每轮按以下链播放：
 
 ```text
 指定 state 3000 ms
@@ -612,7 +615,7 @@ quizzical 2200 ms
 
 动作按目录分为：
 
-- 生命周期：`sleeping`、`dreaming`、`waking`、`idle`、`listening`、`thinking`、`searching`、`working`
+- 生命周期：`sleeping`、`dreaming`、`waking`、`idle`、`listening`、`thinking`、`thinking-alt`、`searching`、`working`
 - 反应：`excited`、`surprised`、`startled`、`suspicious`、`angry`、`drowsy`、`happy`、`winking`、`curious`、`confused`、`quizzical`、`bored`、`proud`、`shy`、`sad`、`laughing`、`scared`、`playful`、`celebrate`
 - Agent 形变：`orbit`、`radar`
 - 交互：`stretching`、`front`

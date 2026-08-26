@@ -144,6 +144,14 @@
       "powering-down": null,
     };
 
+    const THINKING_ALT = Object.freeze({
+      cycleMs: 1200,
+      dotStarts: Object.freeze([0, 1 / 3, 2 / 3]),
+      dotDuration: 0.86,
+      mergeAt: 0.54,
+      absorbAt: 0.76,
+    });
+
     const SPRINGS = {
       spin: [5, 0.9],
       x: [3.5, 1],
@@ -300,6 +308,7 @@
       EYE_PLAYLIST,
       EYE_HOLD_MS,
       BLINK_MS,
+      THINKING_ALT,
       SPRINGS,
       FACE_TUNE,
       POSE,

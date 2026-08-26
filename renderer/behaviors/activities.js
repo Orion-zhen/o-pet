@@ -49,19 +49,25 @@
         {
           name: "humming",
           scene: scenes.humming,
-          weight: 0.72,
+          weight: 0.4,
+          duration: [6000, 9000],
+        },
+        {
+          name: "thinking-alt",
+          scene: scenes["thinking-alt"],
+          weight: 0.36,
           duration: [6000, 9000],
         },
         {
           name: "deep",
           scene: scenes.deepThinking,
-          weight: 0.18,
+          weight: 0.16,
           duration: [3500, 5500],
         },
         {
           name: "radar",
           scene: scenes.radar,
-          weight: 0.1,
+          weight: 0.08,
           duration: [3200, 4800],
         },
       ]);

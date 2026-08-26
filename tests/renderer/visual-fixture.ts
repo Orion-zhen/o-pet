@@ -28,6 +28,12 @@ interface VisualCharacter {
 	readonly hopAt: number;
 	readonly motionAt: number;
 	readonly particleAt: number;
+	readonly preferredShapeName: string;
+	readonly shapeName: string;
+	readonly shapeSpring: { t: number; v: number; x: number };
+	readonly squashX: { t: number; v: number; x: number };
+	readonly squash: { t: number; v: number; x: number };
+	readonly ty: { t: number; v: number; x: number };
 	readonly spinTurn: { t: number; v: number; x: number } | null;
 	readonly trick: { kind: string } | null;
 	playPreset(preset: unknown): void;
@@ -242,7 +248,11 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 	const math = mathFactory.create(deterministicMath.random);
 	const geometry = geometryFactory.create({ data: windowStub.OPET_GEO, math });
 	const tables = tablesFactory.create(windowStub.OPET_GEO, windowStub.O_PET_ACTION_GROUPS);
-	const effects = effectsFactory.create({ data: windowStub.OPET_GEO, math });
+	const effects = effectsFactory.create({
+		data: windowStub.OPET_GEO,
+		math,
+		tables,
+	});
 	const eyes = eyesFactory.create({ geometry, math }, deterministicMath.random);
 	const createRenderer = (): unknown => rendererFactory.create({
 		data: windowStub.OPET_GEO,

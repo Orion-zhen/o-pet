@@ -56,8 +56,8 @@ mod tests {
         assert_eq!(parse_strings(&[]), Ok(Command::Run));
         assert_eq!(parse_strings(&["--list-actions"]), Ok(Command::ListActions));
         assert_eq!(
-            parse_strings(&["--show-action", "happy"]),
-            Ok(Command::ShowAction("happy".into()))
+            parse_strings(&["--show-action", "thinking-alt"]),
+            Ok(Command::ShowAction("thinking-alt".into()))
         );
         assert_eq!(parse_strings(&["--help"]), Ok(Command::Help));
     }

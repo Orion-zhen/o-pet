@@ -57,13 +57,15 @@
         this.math = opts.math;
         this.rand = this.math.rand;
         this.sign = this.math.sign;
-        this.motionController = MOTION.create(this.math);
+        this.motionController = MOTION.create(this.math, T);
         this.expressionController = EXPRESSION.create(this.math, T);
         this.gazeController = GAZE.create(this.math);
         this.choreographyController = CHOREOGRAPHY.create(this.math);
         this.actionController = ACTIONS.create(this.math);
         this.eyeController = EY;
-        this.shapeName = opts.shape || "blob";
+        this.preferredShapeName = opts.shape || "blob";
+        this.shapeName = this.preferredShapeName;
+        this.sceneShapeName = null;
         this.colorId = opts.color || "black";
         this.scheme = opts.scheme || "light";
         this.state = opts.state || "idle";
@@ -76,6 +78,7 @@
         this.sceneVariant = null;
         this.faceRoll = 0;
         this.eyeLids = null;
+        this.bodyDeformation = null;
         this.loginWrap = opts.loginWrap !== false;
         this.eyeTopology = opts.eyeTopology ?? this.loginWrap;
         this.faceTune = opts.faceTune ?? (this.loginWrap ? FACE_TUNE : null);
@@ -102,6 +105,7 @@
         this.spin = spring(0);
         this.tx = spring(0);
         this.ty = spring(0);
+        this.squashX = spring(1);
         this.squash = spring(1);
         this.blink = spring(1);
         this.eyeScale = spring(1);
@@ -110,6 +114,8 @@
         this.eyeMorph = spring(1);
         this.frontBlend = spring(this.state === "front" ? 1 : 0);
         this.shapeSpring = spring(1);
+        this.shapeScaleFrom = this.pose.scale || 1;
+        this.shapeScaleTo = this.shapeScaleFrom;
 
         this.eyeFrom = 0;
         this.eyeTo = 0;
@@ -251,10 +257,17 @@
       }
 
       setShape(name) {
-        if (name === this.shapeName) return;
         if (!DATA.shapes[name]) throw new Error(`未知角色形状: ${name}`);
-        const R = DATA.Re;
+        if (name === this.preferredShapeName) return;
+        this.preferredShapeName = name;
+        if (this.sceneShapeName === null) this._transitionShape(name, true);
+      }
+
+      _transitionShape(name, playTrick) {
+        if (name === this.shapeName) return;
         const k = K2(clamp(this.shapeSpring.x, 0, 1));
+        const currentScale =
+          this.shapeScaleFrom + (this.shapeScaleTo - this.shapeScaleFrom) * k;
         const rest = GEO.shapeMetrics(this.shapeName);
         if (k >= 1 || !this.prevFace || !this.prevRing) {
           this.prevFace = rest.face;
@@ -269,12 +282,13 @@
         }
         this.prevShape = this.shapeName;
         this.shapeName = name;
+        this.shapeScaleFrom = currentScale;
         this.shapeSpring.x = 0;
         this.shapeSpring.v = 0;
         this.shapeSpring.t = 1;
         if (this.loginWrap) this.eyeScaleProp = shapeEyeScale(name);
         this._applyPoseScale();
-        this._cycleShapeTrick();
+        if (playTrick) this._cycleShapeTrick();
       }
 
       setColor(id, scheme) {
@@ -329,6 +343,7 @@
           [this.spin, 0],
           [this.tx, 0],
           [this.ty, 0],
+          [this.squashX, 1],
           [this.squash, 1],
           [this.blink, 1],
           [this.eyeScale, 1],
@@ -339,6 +354,7 @@
           resetSpring(value, target);
         this.faceRoll = 0;
         this.eyeLids = null;
+        this.bodyDeformation = null;
         this.effectSpinRadians = 0;
         this.extras = emptyExtras();
         this.visual.resetPlayback();
@@ -349,6 +365,7 @@
         const expression = scene.expression ?? this.expressionState ?? motion;
         const face = scene.face ?? this.faceState ?? motion;
         const gaze = scene.gaze ?? this.gazeState ?? expression;
+        const sceneShape = typeof scene.shape === "string" ? scene.shape : null;
         const choreography =
           typeof scene.choreography === "string" ? scene.choreography : null;
         const direction =
@@ -363,6 +380,7 @@
         const faceChanged = face !== this.faceState;
         const visualChanged = this.visual.differs(scene);
         const gazeChanged = gaze !== this.gazeState;
+        const shapeChanged = sceneShape !== this.sceneShapeName;
         const performanceChanged =
           choreography !== this.choreographyState ||
           direction !== this.sceneDirection ||
@@ -373,6 +391,7 @@
           !faceChanged &&
           !visualChanged &&
           !gazeChanged &&
+          !shapeChanged &&
           !performanceChanged &&
           !resetEyes &&
           !restart
@@ -385,10 +404,13 @@
         this.expressionState = expression;
         this.faceState = face;
         this.gazeState = gaze;
+        this.sceneShapeName = sceneShape;
         this.choreographyState = choreography;
         this.sceneDirection = direction;
         this.sceneVariant = variant;
         this.frontBlend.t = expression === "front" ? 1 : 0;
+        if (shapeChanged)
+          this._transitionShape(sceneShape ?? this.preferredShapeName, false);
 
         if (motionChanged || performanceChanged || restart) {
           this.motionAt = now;
@@ -475,16 +497,24 @@
         this.squash.v += 2.5 * strength;
       }
       _applyPoseScale() {
-        const sc = this.loginWrap
+        const scale = this.loginWrap
           ? poseScale(this.shapeName)
           : this.pose.scale || 1;
-        this.pose.scale = sc;
+        this.pose.scale = scale;
+        this.shapeScaleTo = scale;
         if (this.sizePx) {
           this.renderer.setViewportStyle("width", `${this.sizePx}px`);
           this.renderer.setViewportStyle("height", `${this.sizePx}px`);
         }
-        if (Math.abs(sc - 1) > 0.001) {
-          this.renderer.setViewportStyle("transform", `scale(${sc})`);
+      }
+
+      _applyViewportScale() {
+        const amount = K2(clamp(this.shapeSpring.x, 0, 1));
+        const scale =
+          this.shapeScaleFrom +
+          (this.shapeScaleTo - this.shapeScaleFrom) * amount;
+        if (Math.abs(scale - 1) > 0.001) {
+          this.renderer.setViewportStyle("transform", `scale(${scale})`);
           this.renderer.setViewportStyle("transformOrigin", "50% 50%");
         } else {
           this.renderer.setViewportStyle("transform", "");
@@ -584,11 +614,13 @@
 
       _render(now) {
         const morphT = clamp(this.eyeMorph.x, 0, 1);
+        this._applyViewportScale();
         this.renderer.render({
           ...this.visual.state,
           now,
           badgeColor: this.badgeColor,
           blink: this.blink,
+          bodyDeformation: this.bodyDeformation,
           effectSpinRadians: this.effectSpinRadians,
           extras: this.extras,
           eyeLids: this.eyeLids,
@@ -619,6 +651,7 @@
           shapeName: this.shapeName,
           shapeSpring: this.shapeSpring,
           spin: this.spin,
+          squashX: this.squashX,
           squash: this.squash,
           tx: this.tx,
           ty: this.ty,
@@ -669,7 +702,9 @@
         this.spin.t = motion.rollDeg;
         this.tx.t = motion.xPx;
         this.ty.t = motion.yPx;
+        this.squashX.t = motion.squashX;
         this.squash.t = motion.squashY;
+        this.bodyDeformation = motion.deformation;
         this.eyeScale.t = expression.eyeScale;
         this.faceRoll = expression.faceRollDeg;
         this.eyeLids = expression.eyeLids;
@@ -822,7 +857,9 @@
           this.spin.t = 0;
           this.tx.t = 0;
           this.ty.t = 0;
+          this.squashX.t = 1;
           this.squash.t = 1;
+          this.bodyDeformation = null;
           this.blink.t = 1;
           this.eyeScale.t = 1;
         }
@@ -837,6 +874,7 @@
           stepSpring(this.spin, ...SPRINGS.spin, step);
           stepSpring(this.tx, ...SPRINGS.x, step);
           stepSpring(this.ty, ...SPRINGS.y, step);
+          stepSpring(this.squashX, ...SPRINGS.squash, step);
           stepSpring(this.squash, ...SPRINGS.squash, step);
           stepSpring(this.blink, ...SPRINGS.blink, step);
           stepSpring(this.eyeScale, ...SPRINGS.eyeScale, step);

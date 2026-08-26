@@ -52,13 +52,25 @@ describe("渲染器目录与控制通道", () => {
 		vm.runInNewContext(actionGroupsSource, windowStub);
 		vm.runInNewContext(tablesSource, windowStub);
 		const geometry = windowStub.OPET_GEO as {
+			Re: number;
 			eyes: Array<Array<Array<[number, number]>>>;
 			palette: Record<string, unknown>;
 			shapes: Record<string, unknown>;
 		};
 		const math = (windowStub.OPET_MATH as { create(random: () => number): unknown }).create(() => 0.5);
 		const geometryEngine = (windowStub.OPET_GEOMETRY as {
-			create(dependencies: Record<string, unknown>): { shapeModel(name: string): { ring: number[][] } };
+			create(dependencies: Record<string, unknown>): {
+				deformRing(
+					ring: Array<[number, number]>,
+					center: number,
+					deformation: {
+						waveAmount: number;
+						wavePhase: number;
+						bumps: Array<{ angle: number; amount: number; width: number }>;
+					},
+				): Array<[number, number]>;
+				shapeModel(name: string): { ring: Array<[number, number]> };
+			};
 		}).create({ data: geometry, math });
 		const tables = (windowStub.OPET_TABLES as {
 			create(data: unknown, actionGroups: unknown): {
@@ -69,9 +81,9 @@ describe("渲染器目录与控制通道", () => {
 		}).create(geometry, windowStub.O_PET_ACTION_GROUPS);
 
 		const states = tables.GROUPS.flatMap((group) => group.states);
-		expect(states).toHaveLength(44);
+		expect(states).toHaveLength(45);
 		expect(states).toEqual(expect.arrayContaining([
-			"startled", "stretching", "dreaming", "quizzical", "front",
+			"startled", "stretching", "dreaming", "quizzical", "front", "thinking-alt",
 		]));
 		expect(states).not.toContain("progress");
 		expect(tables.EYE_PLAYLIST.winking).toEqual([1]);
@@ -96,6 +108,35 @@ describe("渲染器目录与控制通道", () => {
 		expect(Object.keys(geometry.palette)).toEqual([
 			"black", "brown", "red", "orange", "yellow", "green", "cyan", "blue", "violet", "magenta", "gray",
 		]);
+		const sampleRing: Array<[number, number]> = [Math.PI / 6, -Math.PI / 6]
+			.map((angle) => [
+				geometry.Re + Math.cos(angle) * 100,
+				geometry.Re + Math.sin(angle) * 100,
+			]);
+		const deformedRing = geometryEngine.deformRing(sampleRing, geometry.Re, {
+			waveAmount: 1,
+			wavePhase: 0,
+			bumps: [],
+		});
+		const radii = deformedRing.map(([x, y]) =>
+			Math.hypot(x - geometry.Re, y - geometry.Re)
+		);
+		expect(radii[0]).toBeGreaterThan(102);
+		expect(radii[1]).toBeLessThan(98);
+
+		const bumpRing: Array<[number, number]> = [-0.3, 0, 0.3].map((angle) => [
+			geometry.Re + Math.cos(angle) * 100,
+			geometry.Re + Math.sin(angle) * 100,
+		]);
+		const bumpedRing = geometryEngine.deformRing(bumpRing, geometry.Re, {
+			waveAmount: 0,
+			wavePhase: 0,
+			bumps: [{ angle: 0, amount: 9, width: 0.25 }],
+		});
+		const bumpedRadii = bumpedRing.map(([x, y]) =>
+			Math.hypot(x - geometry.Re, y - geometry.Re)
+		);
+		expect(bumpedRadii).toEqual([100, 109, 100]);
 		const ringSignature = Object.keys(geometry.shapes).map((name) => [
 			name,
 			geometryEngine.shapeModel(name).ring.map((point) => point.map((value) => value.toFixed(9))),
@@ -127,7 +168,7 @@ describe("渲染器目录与控制通道", () => {
 			};
 		}).create(presets);
 		const expectedChannels = [
-			"motion", "face", "expression", "gaze", "form",
+			"motion", "face", "expression", "gaze", "shape", "form",
 			"decoration", "particles", "camera", "badge",
 		];
 		expect(presets.CHANNELS).toEqual(expectedChannels);
@@ -150,6 +191,15 @@ describe("渲染器目录与控制通道", () => {
 			motion: { id: "listening" },
 			expression: { id: "front" },
 			gaze: { id: "front" },
+			shape: { id: null },
+		});
+		expect(presets.scenes["thinking-alt"]?.channels).toMatchObject({
+			motion: { id: "thinking-alt" },
+			expression: { id: "thinking" },
+			gaze: { id: "thinking" },
+			shape: { id: "cloud" },
+			form: { id: null },
+			decoration: { id: "thought-pulse" },
 		});
 		expect(presets.scenes.happy?.choreography).toBe("happy");
 		expect(playful.choreography).toBe("playful");
@@ -248,7 +298,9 @@ describe("渲染器目录与控制通道", () => {
 			create(data: unknown, actionGroups: unknown): unknown;
 		}).create(windowStub.OPET_GEO, windowStub.O_PET_ACTION_GROUPS);
 		const math = mathModule.create(deterministicMath.random);
-		const motion = (windowStub.OPET_MOTION as { create(math: unknown): MotionController }).create(math);
+		const motion = (windowStub.OPET_MOTION as {
+			create(math: unknown, tables: unknown): MotionController;
+		}).create(math, tables);
 		const expression = (windowStub.OPET_EXPRESSION as {
 			create(math: unknown, tables: unknown): ExpressionController;
 		}).create(math, tables);

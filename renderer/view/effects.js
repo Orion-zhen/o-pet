@@ -31,6 +31,7 @@
 
     const { clamp, Rc, y1e, K2 } = dependencies.math;
     const DATA = dependencies.data;
+    const THINKING_ALT = dependencies.tables.THINKING_ALT;
 
     function pencilPose(now, stateAt) {
       const Pt = now - stateAt;
@@ -80,6 +81,61 @@
       );
     }
 
+    function sampleThoughtDot(now, stateAt, R, index) {
+      const phase = ((((now - stateAt) / THINKING_ALT.cycleMs) % 1) + 1) % 1;
+      const localPhase =
+        ((phase - THINKING_ALT.dotStarts[index] + 1) % 1) /
+        THINKING_ALT.dotDuration;
+      if (localPhase >= 1) return null;
+
+      const approach = K2(clamp(localPhase / THINKING_ALT.absorbAt, 0, 1));
+      const absorption = K2(
+        clamp(
+          (localPhase - THINKING_ALT.absorbAt) /
+            (1 - THINKING_ALT.absorbAt),
+          0,
+          1,
+        ),
+      );
+      const fusion = K2(
+        clamp(
+          (localPhase - THINKING_ALT.mergeAt) /
+            (THINKING_ALT.absorbAt - THINKING_ALT.mergeAt),
+          0,
+          1,
+        ),
+      );
+      const inverse = 1 - approach;
+      const startX = R - 14 + index * 7;
+      const controlX = R - 78 + index * 4;
+      const contactAngle = 2.12 - index * 0.1;
+      const contactRadius = [95, 93, 96][index];
+      const contactX = R + Math.cos(contactAngle) * contactRadius;
+      const contactY = R + Math.sin(contactAngle) * contactRadius;
+      const absorptionDepth = 28 * absorption;
+      const x =
+        inverse * inverse * startX +
+        2 * inverse * approach * controlX +
+        approach * approach * contactX -
+        Math.cos(contactAngle) * absorptionDepth;
+      const y =
+        inverse * inverse * (R + 168) +
+        2 * inverse * approach * (R + 120) +
+        approach * approach * contactY -
+        Math.sin(contactAngle) * absorptionDepth;
+      return {
+        x,
+        y,
+        radius: 2.4 + 10.1 * approach,
+        opacity: clamp(localPhase / 0.1, 0, 1),
+        bump: {
+          angle: contactAngle,
+          amount: 8.5 * fusion * (1 - absorption),
+          width: 0.24,
+        },
+      };
+    }
+
     class OverlayLayer {
       constructor(options = {}) {
         const doc = options.document;
@@ -114,6 +170,10 @@
             style: "fill:var(--fg);display:none",
           }),
         );
+        this.document = doc;
+        this.bodyGroup = null;
+        this.bodyNode = null;
+        this.thoughtDots = [];
         this.glyphs = [0, 1, 2].map(() =>
           make("path", { style: "display:none" }),
         );
@@ -128,6 +188,8 @@
       }
 
       attach(svg, bodyGroup) {
+        this.bodyGroup = bodyGroup;
+        this.bodyNode = bodyGroup.children[0];
         svg.appendChild(this.back);
         this.dots.forEach((n) => svg.appendChild(n));
         this.rings.forEach((n) => svg.appendChild(n));
@@ -137,10 +199,24 @@
         svg.appendChild(this.front);
       }
 
+      ensureThoughtDots() {
+        while (this.thoughtDots.length < 3) {
+          const dot = this.document.createElementNS(NS, "circle");
+          dot.setAttribute("cx", "0");
+          dot.setAttribute("cy", "0");
+          dot.setAttribute("r", "0");
+          dot.setAttribute("style", "fill:var(--fg);display:none");
+          dot.style.fill = this.primitiveColor;
+          this.bodyGroup.insertBefore(dot, this.bodyNode);
+          this.thoughtDots.push(dot);
+        }
+      }
+
       hideAll() {
         for (const n of this.dots) n.style.display = "none";
         for (const n of this.rings) n.style.display = "none";
         for (const n of this.parts) n.style.display = "none";
+        for (const n of this.thoughtDots) n.style.display = "none";
         for (const n of this.glyphs) n.style.display = "none";
       }
 
@@ -173,6 +249,9 @@
           if (a > 0.004) fn(a);
         };
         run("dots", (a) => this.paintDots(a, now, R));
+        run("thought-pulse", (a) =>
+          this.paintThoughtPulse(a, now, stateAt, R),
+        );
         run("orbit", (a) => this.paintOrbit(a, now, R));
         run("radar", (a) => this.paintRadar(a, now, R, extra.radiusPx));
         run("gather", (a) => this.paintGather(a, now, R));
@@ -209,6 +288,52 @@
           );
           Mt.setAttribute("opacity", (yn * Et.tone).toFixed(3));
         }
+      }
+
+      paintThoughtPulse(ze, now, stateAt, R) {
+        this.ensureThoughtDots();
+        const amount = Rc(ze);
+        if (this._reduce) {
+          for (let index = 0; index < 3; index++) {
+            const dot = this.thoughtDots[index];
+            dot.style.display = "";
+            dot.setAttribute("cx", (R - 18 - index * 13).toFixed(1));
+            dot.setAttribute("cy", (R + 122 - index * 15).toFixed(1));
+            dot.setAttribute("r", ((3 + index * 2.5) * amount).toFixed(2));
+            dot.setAttribute("opacity", (0.8 * amount).toFixed(3));
+          }
+          return;
+        }
+
+        for (let index = 0; index < THINKING_ALT.dotStarts.length; index++) {
+          const dot = this.thoughtDots[index];
+          const sample = sampleThoughtDot(now, stateAt, R, index);
+          if (sample === null) {
+            dot.style.display = "none";
+            continue;
+          }
+          dot.style.display = "";
+          dot.setAttribute("cx", sample.x.toFixed(1));
+          dot.setAttribute("cy", sample.y.toFixed(1));
+          dot.setAttribute("r", (sample.radius * amount).toFixed(2));
+          dot.setAttribute("opacity", (sample.opacity * amount).toFixed(3));
+        }
+      }
+
+      thoughtBumps(now, stateAt, cur, prev, yl, mix, R, reduce) {
+        const amount = Rc(this.amount("thought-pulse", cur, prev, yl, mix));
+        if (reduce || amount <= 0.004) return [];
+        const bumps = [];
+        for (let index = 0; index < THINKING_ALT.dotStarts.length; index++) {
+          const sample = sampleThoughtDot(now, stateAt, R, index);
+          if (sample !== null && sample.bump.amount > 0.004) {
+            bumps.push({
+              ...sample.bump,
+              amount: sample.bump.amount * amount,
+            });
+          }
+        }
+        return bumps;
       }
 
       paintOrbit(ze, now, R) {
@@ -593,7 +718,11 @@
 
       setPrimitiveColor(color) {
         this.primitiveColor = color;
-        for (const primitive of [...this.dots, ...this.parts])
+        for (const primitive of [
+          ...this.dots,
+          ...this.parts,
+          ...this.thoughtDots,
+        ])
           primitive.style.fill = color;
       }
 

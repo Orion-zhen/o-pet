@@ -52,6 +52,20 @@ function visibleBodyColoredRings(root: SvgElementStub): SvgElementStub[] {
 	return rings;
 }
 
+function visibleBodyColoredCircles(root: SvgElementStub): SvgElementStub[] {
+	const circles: SvgElementStub[] = [];
+	const visit = (element: SvgElementStub): void => {
+		if (
+			element.tag === "circle"
+			&& element.attributes.get("style") === "fill:var(--fg);display:none"
+			&& element.style.display === ""
+		) circles.push(element);
+		for (const child of element.children) visit(child);
+	};
+	visit(root);
+	return circles;
+}
+
 describe("渲染器视觉运行时", () => {
 	it("用 SVG 绘制线性渐变并保留代表色", () => {
 		const harness = createVisualHarness();
@@ -132,6 +146,120 @@ describe("渲染器视觉运行时", () => {
 		const dots = visibleBodyColoredDots(harness.svg);
 		expect(dots).toHaveLength(expectedDots);
 		for (const dot of dots) expect(dot.style.fill).toBe("#789abc");
+		harness.character.destroy();
+	});
+
+	it("thinking-alt 让圆点从身体后方进入，并由身体轮廓遮住进入的部分", () => {
+		const harness = createVisualHarness();
+		harness.character.setInk({
+			kind: "linear",
+			angle: 90,
+			accent: "#789abc",
+			stops: [
+				{ offset: 0, color: "#ff0000", opacity: 1 },
+				{ offset: 1, color: "#0000ff", opacity: 1 },
+			],
+		});
+		harness.character.playPreset(harness.presets.scenes["thinking-alt"]);
+		for (let time = 16; time <= 96; time += 16) harness.frame(time);
+		const firstDot = visibleBodyColoredCircles(harness.svg)[0];
+		if (firstDot === undefined) throw new Error("缺少思考圆点");
+		const body = firstDot.parent?.children.find((element) =>
+			element.tag === "path" && element.attributes.get("fill")?.startsWith("url(")
+		);
+		if (firstDot.parent === undefined || body === undefined)
+			throw new Error("思考圆点没有位于身体图层");
+		expect(firstDot.parent.children.indexOf(firstDot)).toBeLessThan(
+			firstDot.parent.children.indexOf(body),
+		);
+		const startX = Number(firstDot.attributes.get("cx"));
+		const startY = Number(firstDot.attributes.get("cy"));
+
+		for (let time = 112; time <= 496; time += 16) harness.frame(time);
+		const middleX = Number(firstDot.attributes.get("cx"));
+		for (let time = 512; time <= 784; time += 16) harness.frame(time);
+		const contactRadius = Number(firstDot.attributes.get("r"));
+		const contactY = Number(firstDot.attributes.get("cy"));
+		for (let time = 800; time <= 912; time += 16) harness.frame(time);
+		const absorbedX = Number(firstDot.attributes.get("cx"));
+		const absorbedY = Number(firstDot.attributes.get("cy"));
+		const absorbedRadius = Number(firstDot.attributes.get("r"));
+		const circles = visibleBodyColoredCircles(harness.svg);
+		expect(circles.length).toBeGreaterThanOrEqual(2);
+		for (const circle of circles) expect(circle.style.fill).toBe("#789abc");
+		expect(middleX).toBeLessThan(startX);
+		expect(startY - contactY).toBeGreaterThan(65);
+		expect(middleX).toBeLessThan(absorbedX);
+		expect(absorbedY).toBeLessThan(contactY);
+		expect(contactRadius).toBeGreaterThan(12);
+		expect(absorbedRadius).toBeCloseTo(contactRadius, 1);
+		expect(Number(firstDot.attributes.get("opacity"))).toBeGreaterThan(0.8);
+		harness.character.destroy();
+	});
+
+	it("thinking-alt 明显呼吸，并在吸收圆点前后拉伸和回弹", () => {
+		const harness = createVisualHarness();
+		harness.character.playPreset(harness.presets.scenes["thinking-alt"]);
+		const body = elementsByTag(harness.svg, "path").find((element) =>
+			element.attributes.get("fill") === "var(--fg, #000)"
+		);
+		if (body === undefined) throw new Error("缺少身体路径");
+		const bodyPaths: string[] = [];
+		const scaleX: number[] = [];
+		const scaleY: number[] = [];
+		const yPositions: number[] = [];
+		for (let time = 16; time <= 3000; time += 16) {
+			harness.frame(time);
+			if (time < 1000) continue;
+			bodyPaths.push(body.attributes.get("d") ?? "");
+			scaleX.push(harness.character.squashX.x);
+			scaleY.push(harness.character.squash.x);
+			yPositions.push(harness.character.ty.x);
+		}
+		expect(new Set(bodyPaths).size).toBeGreaterThan(20);
+		expect(Math.max(...scaleX)).toBeLessThan(0.96);
+		expect(Math.max(...yPositions)).toBeLessThan(-3);
+		expect(Math.max(...scaleX) - Math.min(...scaleX)).toBeGreaterThan(0.045);
+		expect(Math.max(...scaleY) - Math.min(...scaleY)).toBeGreaterThan(0.1);
+		expect(Math.max(...yPositions) - Math.min(...yPositions)).toBeGreaterThan(4.5);
+		harness.character.destroy();
+	});
+
+	it("thinking-alt 丝滑切入 cloud 并在退出时恢复原身形", () => {
+		const harness = createVisualHarness();
+		const viewportScale = (): number => {
+			const match = /^scale\(([\d.]+)\)$/.exec(String(harness.svg.style.transform));
+			if (match?.[1] === undefined) throw new Error("视口缺少缩放");
+			return Number(match[1]);
+		};
+		const blobScale = viewportScale();
+		harness.setTime(1000);
+		harness.character.playPreset(harness.presets.scenes["thinking-alt"]);
+		expect(harness.character.preferredShapeName).toBe("blob");
+		expect(harness.character.shapeName).toBe("cloud");
+		expect(harness.character.shapeSpring.x).toBe(0);
+		expect(viewportScale()).toBe(blobScale);
+
+		harness.frame(1016);
+		const firstEntryScale = viewportScale();
+		expect(harness.character.shapeSpring.x).toBeGreaterThan(0);
+		expect(harness.character.shapeSpring.x).toBeLessThan(1);
+		expect(firstEntryScale).toBeGreaterThan(blobScale);
+		for (let time = 1032; time <= 2000; time += 16) harness.frame(time);
+		expect(harness.character.shapeSpring.x).toBeGreaterThan(0.99);
+		const cloudScale = viewportScale();
+		expect(cloudScale).toBeGreaterThan(firstEntryScale);
+
+		harness.setTime(2000);
+		harness.character.setPreset(harness.presets.scenes.idle);
+		expect(harness.character.shapeName).toBe("blob");
+		expect(harness.character.shapeSpring.x).toBe(0);
+		expect(viewportScale()).toBe(cloudScale);
+		harness.frame(2016);
+		expect(harness.character.shapeSpring.x).toBeGreaterThan(0);
+		expect(harness.character.shapeSpring.x).toBeLessThan(1);
+		expect(viewportScale()).toBeLessThan(cloudScale);
+		expect(viewportScale()).toBeGreaterThan(blobScale);
 		harness.character.destroy();
 	});
 
@@ -398,12 +526,12 @@ describe("渲染器视觉运行时", () => {
 			["receiving@7800", "0b39c5447baf5d5a"],
 			["quizzical@9016", "08bc4d7f7912f5d0"],
 			["quizzical@9900", "8c3b8baac2e86913"],
-			["cloud@11016", "a0d19b71eb57be6c"],
-			["cloud@11800", "23bc63b271ff82e5"],
-			["spin@13016", "d3ca58cc195a1981"],
-			["spin@13700", "07b762adda95c15e"],
-			["wink-pounce@15016", "71f01a37b150a1c2"],
-			["wink-pounce@15320", "a627ca9ebe4714f6"],
+			["cloud@11016", "3ed0626f4c02d228"],
+			["cloud@11800", "7ec28ea5509b5737"],
+			["spin@13016", "62b4e08b2b79625d"],
+			["spin@13700", "6ae7082e501342ef"],
+			["wink-pounce@15016", "0dc19cdb16dd3e9f"],
+			["wink-pounce@15320", "6abf6e40e3acfd3e"],
 		]);
 	});
 

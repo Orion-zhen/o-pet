@@ -1,7 +1,7 @@
 [
   {
     "label": "Lifecycle",
-    "states": ["sleeping", "dreaming", "waking", "idle", "listening", "thinking", "searching", "working"]
+    "states": ["sleeping", "dreaming", "waking", "idle", "listening", "thinking", "thinking-alt", "searching", "working"]
   },
   {
     "label": "Reactions",

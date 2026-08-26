@@ -19,6 +19,7 @@ interface CharacterScene {
 	expression: string;
 	effect: string | null;
 	gaze: string;
+	shape?: string | null;
 	direction?: number;
 	variant?: string;
 }
@@ -46,6 +47,7 @@ class CharacterStub {
 			expression: options.state,
 			effect: options.state,
 			gaze: options.state,
+			shape: null,
 		}];
 		this.colorId = options.color;
 	}
@@ -80,13 +82,16 @@ class CharacterStub {
 		const effect = form === null || form === undefined
 			? channels.particles?.id === "wide-spin-belts"
 				? "humming"
-				: channels.badge?.id === "notification" ? "notifying" : null
+				: channels.decoration?.id === "thought-pulse"
+					? "thinking-alt"
+					: channels.badge?.id === "notification" ? "notifying" : null
 			: effectsByForm[form] ?? form;
 		this.setScene({
 			pose: channels.motion?.id ?? "idle",
 			expression: channels.expression?.id ?? "idle",
 			effect,
 			gaze: channels.gaze?.id ?? "idle",
+			shape: channels.shape?.id ?? null,
 			...(detailed.direction === undefined ? {} : { direction: detailed.direction }),
 			...(detailed.variant === undefined ? {} : { variant: detailed.variant }),
 		});

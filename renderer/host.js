@@ -44,7 +44,11 @@
     const sequences = g.OPET_SEQUENCES.create(presets);
     const math = g.OPET_MATH.create(random);
     const geometry = g.OPET_GEOMETRY.create({ data: g.OPET_GEO, math });
-    const effects = g.OPET_EFFECTS.create({ data: g.OPET_GEO, math });
+    const effects = g.OPET_EFFECTS.create({
+      data: g.OPET_GEO,
+      math,
+      tables,
+    });
     const eyes = g.OPET_EYES.create({ geometry, math }, random);
     const character = g.O_PET_RUNTIME.create(
       {

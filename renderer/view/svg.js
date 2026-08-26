@@ -132,7 +132,7 @@
         (character.spin.x * bodyW + ex.rollOffsetDeg * bodyW) * tilt +
         (ex.freeRollDeg || 0) * bodyW +
         ov.rollDeg * yl;
-      const sx = bodyW + ov.radiusScale * yl;
+      const sx = character.squashX.x * bodyW + ov.radiusScale * yl;
       const sy = character.squash.x * bodyW + ov.radiusScale * yl;
       character.group.setAttribute(
         "transform",
@@ -158,6 +158,7 @@
         : GEO.shapeModel(character.shapeName).ring;
       let liveRing = restRing;
       let turned = false;
+      let deformed = false;
       const turnAt =
         !morphing && spinning
           ? GEO.shapeModel(character.shapeName).turnAt
@@ -166,9 +167,31 @@
         liveRing = turnAt(spinAmt);
         turned = true;
       }
+      const thoughtBumps = character.fx.thoughtBumps(
+        now,
+        character.decorationAt,
+        character.decoKind,
+        character.decoPrev,
+        decorationAmount,
+        decorationMix,
+        R,
+        character.reduceMotion,
+      );
+      const deformation = character.bodyDeformation
+        ? {
+            ...character.bodyDeformation,
+            bumps: [...character.bodyDeformation.bumps, ...thoughtBumps],
+          }
+        : thoughtBumps.length > 0
+          ? { waveAmount: 0, wavePhase: 0, bumps: thoughtBumps }
+          : null;
+      if (deformation) {
+        liveRing = GEO.deformRing(liveRing, R, deformation);
+        deformed = true;
+      }
       let faceTop = shape.top;
       let faceBottom = shape.bottom;
-      if (morphing || turned) {
+      if (morphing || turned || deformed) {
         faceTop = Infinity;
         faceBottom = -Infinity;
         for (const p of liveRing) {
@@ -181,7 +204,7 @@
         bodyD = pencil
           ? GEO.closedSpline(GEO.formRing(character.formKind, R, tear))
           : character.fx.circlePath;
-      } else if (Jc <= 0 && !morphing && !turned) {
+      } else if (Jc <= 0 && !morphing && !turned && !deformed) {
         bodyD = shape.path;
       } else {
         const to = GEO.formRing(
@@ -233,7 +256,7 @@
         Math.abs(character.formTurn.t - character.formTurn.x) > 0.01;
       let cyl = overlayLive ? character.formTurn.x : null;
       if (ex.turnRadians != null) cyl = (cyl ?? 0) + ex.turnRadians;
-      const ringHint = morphing || turned ? liveRing : null;
+      const ringHint = morphing || turned || deformed ? liveRing : null;
       const steadyGaze =
         character.gazeState === "sleeping" ||
         (character.gazeState === "front" && character.frontBlend.t === 0);

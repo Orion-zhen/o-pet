@@ -27,8 +27,9 @@ mod tests {
     #[test]
     fn loads_unique_action_names_from_renderer_metadata() {
         let names = names();
-        assert_eq!(names.len(), 44);
+        assert_eq!(names.len(), 45);
         assert!(names.contains(&"happy"));
+        assert!(names.contains(&"thinking-alt"));
         assert!(names.contains(&"working"));
 
         let mut unique = names.clone();

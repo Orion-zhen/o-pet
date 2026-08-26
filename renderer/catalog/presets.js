@@ -5,6 +5,7 @@
     "face",
     "expression",
     "gaze",
+    "shape",
     "form",
     "decoration",
     "particles",
@@ -16,6 +17,7 @@
   const face = (id) => control("face", id);
   const expression = (id) => control("expression", id);
   const gaze = (id) => control("gaze", id);
+  const shape = (id) => control("shape", id);
   const form = (id) => control("form", id);
   const decoration = (id) => control("decoration", id);
   const particles = (id) => control("particles", id);
@@ -40,6 +42,10 @@
     });
   const EFFECTS = Object.freeze({
     thinking: effectRecipe("dots"),
+    "thinking-alt": effectRecipe(null, {
+      decoration: "thought-pulse",
+      camera: null,
+    }),
     orbit: effectRecipe("orbit"),
     radar: effectRecipe("radar"),
     spawning: effectRecipe("gather"),
@@ -103,12 +109,14 @@
     expressionId = motionId,
     effectId = motionId,
     gazeId = expressionId,
+    shapeId = null,
   ) =>
     compose(id, [
       motion(motionId),
       face(motionId),
       expression(expressionId),
       gaze(gazeId),
+      shape(shapeId),
       ...controlsForEffect(effectId),
     ]);
 
@@ -143,6 +151,14 @@
     listening: scene("listening", "listening", "listening", null, "listening"),
     curious: scene("curious", "curious", "curious", null, "curious"),
     thinking: scene("thinking", "thinking", "thinking", null, "thinking"),
+    "thinking-alt": scene(
+      "thinking-alt",
+      "thinking-alt",
+      "thinking",
+      "thinking-alt",
+      "thinking",
+      "cloud",
+    ),
     deepThinking: scene(
       "deepThinking",
       "thinking",
@@ -227,6 +243,7 @@
       face: preset.channels.face.id,
       expression: preset.channels.expression.id,
       gaze: preset.channels.gaze.id,
+      shape: preset.channels.shape.id,
       form: preset.channels.form.id,
       decoration: preset.channels.decoration.id,
       particles: preset.channels.particles.id,

@@ -1,7 +1,9 @@
 /* 身体运动控制器。只计算身体目标和身体瞬态动作，不决定眼形、视线或特效。 */
 (function (g) {
-  function create(math) {
+  function create(math, tables) {
     const { clamp, rand, sign, K2 } = math;
+    const { absorbAt, cycleMs, dotDuration, dotStarts } =
+      tables.THINKING_ALT;
 
     function sample(state, globalSec, localSec, now, context, options = {}) {
       const restRollDeg = 0;
@@ -14,6 +16,7 @@
       let rollVelocity = 0;
       let spin = null;
       let requestBlink = false;
+      let deformation = null;
 
       switch (state) {
         case "sleeping": {
@@ -126,6 +129,42 @@
           xPx = Math.sin(globalSec * 0.3) * 5;
           yPx = Math.sin(globalSec * 0.6) * 2.5;
           break;
+        case "thinking-alt": {
+          const cycleSec = cycleMs / 1000;
+          const phase = ((localSec / cycleSec) % 1 + 1) % 1;
+          const breath = Math.sin((localSec * Math.PI * 2) / 3.1);
+          let stretch = 0;
+          let recoil = 0;
+          for (const start of dotStarts) {
+            const impact = (start + dotDuration * absorbAt) % 1;
+            const untilImpact = ((impact - phase + 1) % 1) * cycleSec;
+            if (untilImpact < 0.18) {
+              stretch += Math.sin(
+                (1 - untilImpact / 0.18) * (Math.PI / 2),
+              );
+            }
+            const impactAge = ((phase - impact + 1) % 1) * cycleSec;
+            if (impactAge < 0.28) {
+              recoil +=
+                Math.exp(-impactAge * 8) * Math.sin(impactAge * 30);
+            }
+          }
+          stretch = clamp(stretch, 0, 1.15);
+          recoil = clamp(recoil, -0.65, 1);
+          yPx = -10 - breath * 3.2 + stretch * 4.2 - recoil * 5.5;
+          squashX =
+            0.9 * (1 - breath * 0.026 - stretch * 0.024 + recoil * 0.045);
+          squashY =
+            0.9 * (1 + breath * 0.052 + stretch * 0.095 - recoil * 0.11);
+          if (!options.reduceMotion) {
+            deformation = {
+              waveAmount: 1.1 + breath * 0.55,
+              wavePhase: (localSec * Math.PI * 2) / 5.6,
+              bumps: [],
+            };
+          }
+          break;
+        }
         case "searching": {
           const scan = Math.sin(globalSec * 1.3);
           rollDeg = restRollDeg + scan * 13;
@@ -439,6 +478,7 @@
         yPx,
         squashX,
         squashY,
+        deformation,
         impulse: Object.freeze({ yVelocity, rollVelocity, spin }),
         requestBlink,
       };

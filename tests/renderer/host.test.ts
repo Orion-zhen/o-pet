@@ -31,6 +31,18 @@ describe("渲染器组合根行为", () => {
 		});
 	});
 
+	it("thinking-alt 预览组合 cloud 身形和思考圆点", () => {
+		const { api, character } = createHarness();
+		expect(api.showAction("thinking-alt")).toBe(true);
+		expect(latest(character)).toMatchObject({
+			pose: "thinking-alt",
+			expression: "thinking",
+			effect: "thinking-alt",
+			gaze: "thinking",
+			shape: "cloud",
+		});
+	});
+
 	it("页面隐藏期间暂停预览循环的计时", () => {
 		const { api, character, clock, document } = createHarness();
 		api.showAction("sleeping");
@@ -132,6 +144,19 @@ describe("渲染器组合根行为", () => {
 		expect(latest(character)).toMatchObject({ pose: "humming", effect: "humming" });
 		clock.advance(6000);
 		expect(latest(character).pose).toBe("thinking");
+	});
+
+	it("thinking-alt 以仅次于 humming 的权重进入思考强调段", () => {
+		const { api, character, clock } = createHarness(false, () => 0.5);
+		api.update({ activity: "thinking" });
+		clock.advance(2000);
+		expect(latest(character).pose).toBe("thinking");
+		clock.advance(4500);
+		expect(latest(character)).toMatchObject({
+			pose: "thinking-alt",
+			effect: "thinking-alt",
+			shape: "cloud",
+		});
 	});
 
 	it("长时间书写后同步收起铅笔、抬头和条带旋转", () => {
