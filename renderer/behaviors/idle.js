@@ -136,7 +136,7 @@
           const failed = random() < 0.18;
           return [
             { scene: scenes.playful, duration: 700 },
-            { scene: scenes.jumping, duration: 1800, bounce: true },
+            { scene: scenes.jumping, duration: 1800, hop: true },
             ...(failed
               ? [
                   { scene: scenes.surprised, duration: 650 },
@@ -176,7 +176,6 @@
             {
               scene: withDetails(scenes.playful, { direction }),
               duration: 1400,
-              spin: { turns: 1, direction },
             },
             ...ending,
           ];
@@ -486,7 +485,7 @@
       lastHoverAt = now();
       const steps = [
         { scene: scenes.curious, duration: 500 },
-        { scene: scenes.frontAttention, duration: 1300 },
+        { scene: scenes.front, duration: 1300 },
       ];
       if (random() < 0.18)
         steps.push({ scene: scenes.quickHappy, duration: 700, wink: true });

@@ -62,6 +62,7 @@
         ringHint,
       } = opt;
       const pulse = 1 + 0.07 * Math.sin(morphT * Math.PI);
+      const frontFacing = opt.frontFacing === true;
       const $i = {
         x: face.x,
         y: face.y,
@@ -70,7 +71,7 @@
         eye: face.eye * (faceTune?.size ?? 1),
         leftDX: face.leftDX ?? 0,
       };
-      const sX = uniformEyes ? $i.leftDX : 0;
+      const sX = uniformEyes && !frontFacing ? $i.leftDX : 0;
       const cents = [centroid(polys[0]), centroid(polys[1])];
       let a1 = 0,
         o1 = 0;
@@ -79,7 +80,9 @@
       const l1 = Math.abs(cents[1][0] - (cents[0][0] + sX)) * $i.sx;
       const pre = uniformEyes ? 0 : VJt;
       const _ee = a1 + o1 > 0.5 ? clamp((l1 - pre) / (a1 + o1), 0.35, 4) : 4;
-      const Uee = (uniformEyes ? 1 : $i.eye) * clamp(eyeScaleProp, 0.25, 4);
+      const Uee =
+        (frontFacing ? $i.eye : uniformEyes ? 1 : $i.eye) *
+        clamp(eyeScaleProp, 0.25, 4);
       const oX = Math.min(clamp(opt.eyeBoostX, 0.2, 2) * Uee, _ee / pulse);
       const Hee = Math.min(
         oX * clamp(faceTune?.eyeWidth ?? 1, 0.2, 3),
@@ -120,7 +123,12 @@
           bre = true,
           Tre = 1;
         let Sre = clamp(Re + $i.y + (Ti - Re) * $i.sy, top + 2, bottom - 2);
-        const use3d = !!cr;
+        const surfaceTurn = frontFacing ? null : turn;
+        const use3d = !!cr && !frontFacing;
+        if (frontFacing) {
+          Wo = (i === 0 ? -28 : 28) * $i.sx;
+          Sre = clamp(Re + $i.y, top + 2, bottom - 2);
+        }
 
         if (use3d) {
           const xr = (Ea - Re) / Re;
@@ -170,12 +178,12 @@
           Tre = Dke(clamp(Io / 0.5, 0, 1));
         }
 
-        if (turn != null) {
+        if (surfaceTurn != null) {
           const [spL, spR] = liveSpan(Sre);
           const rad = Math.max((spR - spL) / 2, 12);
           Ca = (spL + spR) / 2;
           const li0 = Math.asin(clamp(Wo / rad, -1, 1));
-          const bl0 = li0 + turn;
+          const bl0 = li0 + surfaceTurn;
           const Io0 = Math.cos(bl0);
           const uo0 = Math.max(Math.cos(li0), 0.02);
           bre = Io0 > 0.02;
@@ -205,7 +213,7 @@
         const Vee = clamp(_c * Hee * pulse, 0.02, 2.4);
         const _2 = clamp(vre * lid * u1 * pulse, 0.02, 2.4);
         eyeEls[i].style.display = bre && formAmount < 0.5 ? "" : "none";
-        const useTurnOr3d = turn != null || use3d;
+        const useTurnOr3d = surfaceTurn != null || use3d;
         const Ume = G9e * _2 + 2;
         const vl = clamp(
           useTurnOr3d ? Sre + Ko * $i.sy : Re + $i.y + (Ti + Ko - Re) * $i.sy,
@@ -241,7 +249,11 @@
         }
 
         if (use3d) {
-          const FrM = clamp((turn != null ? _c : 1) * Hee * pulse, 0.02, 2.4);
+          const FrM = clamp(
+            (surfaceTurn != null ? _c : 1) * Hee * pulse,
+            0.02,
+            2.4,
+          );
           const IaM = clamp(lid * u1 * pulse, 0.02, 2.4);
           const liM = km * FrM,
             blM = Ree * FrM,

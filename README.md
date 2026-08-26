@@ -45,7 +45,7 @@ cargo run --release -- --show-action happy
 
 渲染器使用单向依赖和显式组合：
 
-- `renderer/catalog/` 保存动作名称、场景预设和有限序列。场景由 `motion`、`face`、`expression`、`gaze`、`form`、`decoration`、`particles`、`camera` 和 `badge` 九个固定通道组成。
+- `renderer/catalog/` 保存动作名称、场景预设和有限序列。场景由 `motion`、`face`、`expression`、`gaze`、`form`、`decoration`、`particles`、`camera` 和 `badge` 九个固定通道组成，并可独立声明入场编排。共享控制通道的场景不会自动继承彼此的入场编排。
 - `renderer/behaviors/` 将 Agent 活动、空闲深度、Cue 和用户交互转换为时间线。各行为模块只依赖场景目录、随机数和时间线端口。
 - `renderer/runtime/` 提供统一动画时钟、可取消时间线和场景呈现端口。统一时钟同时冻结定时器、动画帧和动画时间。
 - `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。`visual-channels.js` 独立管理形变、装饰、粒子、相机和徽标的过渡状态。

@@ -21,6 +21,16 @@ describe("渲染器组合根行为", () => {
 		expect(api.update({ activity: "thinking" })).toBe(false);
 	});
 
+	it("front 预览组合正面注意姿态和锁定视线", () => {
+		const { api, character } = createHarness();
+		expect(api.showAction("front")).toBe(true);
+		expect(latest(character)).toMatchObject({
+			pose: "listening",
+			expression: "front",
+			gaze: "front",
+		});
+	});
+
 	it("页面隐藏期间暂停预览循环的计时", () => {
 		const { api, character, clock, document } = createHarness();
 		api.showAction("sleeping");

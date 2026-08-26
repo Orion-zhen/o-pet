@@ -64,6 +64,9 @@
     }),
   });
 
+  const withChoreography = (preset, choreography) =>
+    Object.freeze({ ...preset, choreography });
+
   const controlsForEffect = (effectId) => {
     const recipe =
       effectId === null ? EMPTY_EFFECT : (EFFECTS[effectId] ?? EMPTY_EFFECT);
@@ -111,7 +114,7 @@
 
   const scenes = Object.freeze({
     spawning: scene("spawning", "spawning"),
-    waking: scene("waking", "waking"),
+    waking: withChoreography(scene("waking", "waking"), "waking"),
     idle: scene("idle", "idle", "idle", null, "idle"),
     sleeping: scene("sleeping", "sleeping"),
     drowsy: scene("drowsy", "drowsy", "drowsy", null, "drowsy"),
@@ -120,16 +123,13 @@
     startled: scene("startled", "startled", "startled", null, "startled"),
     quizzical: scene("quizzical", "quizzical", "quizzical", null, "front"),
     dragging: scene("dragging", "dragging"),
-    frontAttention: scene(
-      "frontAttention",
-      "listening",
-      "curious",
-      null,
-      "front",
-    ),
+    front: scene("front", "listening", "front", null, "front"),
     sleepyCurious: scene("sleepyCurious", "curious", "drowsy", null, "drowsy"),
     bored: scene("bored", "bored", "bored", null, "bored"),
-    playful: scene("playful", "playful", "playful", null, "playful"),
+    playful: withChoreography(
+      scene("playful", "playful", "playful", null, "playful"),
+      "playful",
+    ),
     jumping: scene("jumping", "playful", "happy", null, "playful"),
     gazeListening: scene(
       "gazeListening",
@@ -182,18 +182,24 @@
     sending: scene("sending", "working", "happy", "sending", "notifying"),
     alerting: scene("alerting", "alerting"),
     notifying: scene("notifying", "notifying"),
-    happy: scene("happy", "happy", "happy", null, "happy"),
+    happy: withChoreography(
+      scene("happy", "happy", "happy", null, "happy"),
+      "happy",
+    ),
     quickHappy: scene("quickHappy", "happy", "winking", null, "happy"),
     shy: scene("shy", "shy", "shy", null, "shy"),
     surprised: scene("surprised", "surprised", "surprised", null, "surprised"),
     confused: scene("confused", "confused", "confused", null, "confused"),
     angry: scene("angry", "angry", "angry", null, "angry"),
-    proud: scene("proud", "proud", "proud", null, "proud"),
+    proud: withChoreography(
+      scene("proud", "proud", "proud", null, "proud"),
+      "proud",
+    ),
     celebrate: scene("celebrate", "celebrate"),
     sad: scene("sad", "sad", "sad", null, "sad"),
   });
 
-  const fromState = (state) => scene(`state:${state}`, state);
+  const fromState = (state) => scenes[state] ?? scene(`state:${state}`, state);
 
   function withDetails(preset, details) {
     return Object.freeze({ preset, ...details });
@@ -206,6 +212,9 @@
     return Object.freeze({
       id: `${base.id}+${replacement.id}`,
       channels: Object.freeze(channels),
+      choreography: channelNames.includes("motion")
+        ? (replacement.choreography ?? null)
+        : (base.choreography ?? null),
     });
   }
 
@@ -223,6 +232,7 @@
       particles: preset.channels.particles.id,
       camera: preset.channels.camera.id,
       badge: preset.channels.badge.id,
+      choreography: preset.choreography ?? null,
       direction: details?.direction,
       variant: details?.variant,
     });

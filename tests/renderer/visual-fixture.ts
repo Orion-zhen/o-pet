@@ -21,16 +21,20 @@ interface VisualPreset {
 interface VisualCharacter {
 	readonly celebrateAt: number | null;
 	readonly ctx: Record<string, unknown>;
+	readonly extras: { hopYPx: number; turnRadians: number | null };
+	readonly eyeTo: number;
 	readonly faceAt: number;
+	readonly hopAt: number;
 	readonly motionAt: number;
 	readonly particleAt: number;
 	playPreset(preset: unknown): void;
 	setPaused(value: boolean): void;
 	setPreset(preset: unknown, options?: { resetEyes?: boolean }): void;
+	setReduceMotion(value: boolean): void;
 	setShape(shape: string): void;
 	winkOnce(eye?: number): void;
 	spinOnce(turns?: number, direction?: number): void;
-	bounceOnce(): void;
+	hopOnce(): void;
 	pounceOnce(direction?: number, strength?: number): void;
 	destroy(): void;
 }
@@ -45,7 +49,10 @@ class VisualWindowStub extends EventTargetStub {
 		create(dependencies: Record<string, unknown>, random: () => number): object;
 	};
 	GROK_GAZE?: object;
-	GROK_GEO?: object;
+	GROK_GEO?: {
+		Re: number;
+		shapes: Record<string, { face: { x: number; y: number } }>;
+	};
 	GROK_GEOMETRY?: { create(dependencies: Record<string, unknown>): object };
 	GROK_MATH?: { create(random: () => number): { rand(minimum: number, maximum: number): number } };
 	GROK_MOTION?: object;
@@ -84,8 +91,55 @@ export function hasLiveTrail(element: SvgElementStub): boolean {
 	return element.attributes.has("data-trail") || element.children.some(hasLiveTrail);
 }
 
-export function createVisualHarness(): {
+function renderedEyeElements(element: SvgElementStub): SvgElementStub[] {
+	const eyes: SvgElementStub[] = [];
+	const visit = (current: SvgElementStub): void => {
+		if (current.attributes.get("fill") === "var(--bg, #f3efe6)") eyes.push(current);
+		for (const child of current.children) visit(child);
+	};
+	visit(element);
+	return eyes;
+}
+
+export function renderedEyeCenters(element: SvgElementStub): Array<{ x: number; y: number }> {
+	return renderedEyeElements(element).map((eye) => {
+		const transform = eye.attributes.get("transform") ?? "";
+		const match = /^translate\((-?[\d.]+) (-?[\d.]+)\)/.exec(transform);
+		if (match?.[1] === undefined || match[2] === undefined)
+			throw new Error("眼形缺少位移");
+		return { x: Number(match[1]), y: Number(match[2]) };
+	});
+}
+
+export function renderedEyeSizes(
+	element: SvgElementStub,
+): Array<{ height: number; width: number }> {
+	return renderedEyeElements(element).map((eye) => {
+		const coordinates = (
+			eye.attributes.get("d")?.match(/-?[\d.]+/g) ?? []
+		).map(Number);
+		const xs = coordinates.filter((_, index) => index % 2 === 0);
+		const ys = coordinates.filter((_, index) => index % 2 === 1);
+		const transform = eye.attributes.get("transform") ?? "";
+		const scale = /scale\((-?[\d.]+) (-?[\d.]+)\)/.exec(transform);
+		if (
+			xs.length === 0
+			|| ys.length === 0
+			|| scale?.[1] === undefined
+			|| scale[2] === undefined
+		) throw new Error("眼形缺少尺寸");
+		return {
+			height:
+				(Math.max(...ys) - Math.min(...ys)) * Math.abs(Number(scale[2])),
+			width:
+				(Math.max(...xs) - Math.min(...xs)) * Math.abs(Number(scale[1])),
+		};
+	});
+}
+
+export function createVisualHarness(random: () => number = () => 0.5): {
 	character: VisualCharacter;
+	faceCenter(shape: string): { x: number; y: number };
 	factory: RendererFactory;
 	frame(time: number): void;
 	pendingFrames(): number;
@@ -102,7 +156,7 @@ export function createVisualHarness(): {
 		documentElement,
 	};
 	const deterministicMath = Object.create(Math) as Math;
-	deterministicMath.random = () => 0.5;
+	deterministicMath.random = random;
 	const windowStub = new VisualWindowStub();
 	const requestAnimationFrame = (callback: AnimationFrameCallback): number => {
 		const id = nextFrameId++;
@@ -231,6 +285,13 @@ export function createVisualHarness(): {
 	});
 	return {
 		character,
+		faceCenter(shape) {
+			const data = windowStub.GROK_GEO;
+			const face = data?.shapes[shape]?.face;
+			if (data === undefined || face === undefined)
+				throw new Error(`缺少身形 ${shape}`);
+			return { x: data.Re + face.x, y: data.Re + face.y };
+		},
 		factory,
 		frame(time) {
 			now = time;

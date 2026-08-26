@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { ClockStub, DocumentStub, MotionQueryStub, SvgElementStub } from "./browser-stubs.js";
-import { createVisualHarness, hasLiveTrail, svgHash } from "./visual-fixture.js";
+import {
+	createVisualHarness, hasLiveTrail, renderedEyeCenters, renderedEyeSizes, svgHash,
+} from "./visual-fixture.js";
+
+const SHAPES = [
+	"blob", "pebble", "bean", "egg", "squircle", "tablet", "capsule", "cylinder", "hex",
+	"gem", "crystal", "wedge", "shield", "dome", "arch", "cloud", "teardrop", "leaf",
+];
 
 describe("渲染器视觉运行时", () => {
 	it("重新播放同名预设时重置各动画通道的时间轴", () => {
@@ -47,6 +54,90 @@ describe("渲染器视觉运行时", () => {
 		playCycle(4000);
 		playCycle(8000);
 		expect(hasLiveTrail(harness.svg)).toBe(false);
+		harness.character.destroy();
+	});
+
+	it("happy 进入后执行弹跳，减少动态模式下跳过", () => {
+		const moving = createVisualHarness();
+		moving.character.playPreset(moving.presets.scenes.happy);
+		for (let time = 16; time <= 160; time += 16) moving.frame(time);
+		expect(moving.character.hopAt).toBeGreaterThanOrEqual(120);
+		moving.character.destroy();
+
+		const reduced = createVisualHarness();
+		reduced.character.setReduceMotion(true);
+		reduced.character.playPreset(reduced.presets.scenes.happy);
+		for (let time = 16; time <= 160; time += 16) reduced.frame(time);
+		expect(reduced.character.hopAt).toBe(-1);
+		reduced.character.destroy();
+	});
+
+	it.each([0.49, 0.5])("playful 的旋转分支 %s 会生成旋转轨迹", (random) => {
+		const harness = createVisualHarness(() => random);
+		harness.character.playPreset(harness.presets.scenes.playful);
+		for (let time = 16; time <= 400; time += 16) harness.frame(time);
+		expect(hasLiveTrail(harness.svg)).toBe(true);
+		harness.character.destroy();
+	});
+
+	it("proud 完成整圈并稳定后才开始弹跳", () => {
+		const harness = createVisualHarness();
+		harness.character.playPreset(harness.presets.scenes.proud);
+		for (let time = 16; time <= 400; time += 16) harness.frame(time);
+		expect(hasLiveTrail(harness.svg)).toBe(true);
+
+		for (let time = 416; time <= 832; time += 16) harness.frame(time);
+		expect(harness.character.hopAt).toBe(-1);
+		expect(Math.abs(harness.character.extras.turnRadians ?? 0)).toBeCloseTo(
+			Math.PI * 2,
+			10,
+		);
+
+		for (let time = 848; time <= 896; time += 16) harness.frame(time);
+		expect(harness.character.hopAt).toBe(-1);
+		harness.frame(912);
+		expect(harness.character.hopAt).toBe(912);
+		expect(Math.abs(harness.character.extras.turnRadians ?? 0)).toBeCloseTo(
+			Math.PI * 2,
+			10,
+		);
+
+		for (let time = 928; time <= 2080; time += 16) harness.frame(time);
+		expect(harness.character.hopAt).toBe(-1);
+		expect(harness.character.extras.turnRadians).toBeNull();
+		harness.character.destroy();
+	});
+
+	it.each(SHAPES)("front 在 %s 身形上将眼睛放在脸部正中", (shape) => {
+		const harness = createVisualHarness();
+		harness.character.setReduceMotion(true);
+		harness.character.setShape(shape);
+		harness.character.playPreset(harness.presets.scenes.front);
+		for (let time = 16; time <= 2000; time += 16) harness.frame(time);
+		const centers = renderedEyeCenters(harness.svg);
+		const sizes = renderedEyeSizes(harness.svg);
+		const expected = harness.faceCenter(shape);
+		expect(harness.character.eyeTo).toBe(25);
+		expect(centers).toHaveLength(2);
+		const [left, right] = centers;
+		if (left === undefined || right === undefined)
+			throw new Error("缺少正面眼形");
+		expect((left.x + right.x) / 2).toBeCloseTo(expected.x, 0);
+		expect((left.y + right.y) / 2).toBeCloseTo(expected.y, 0);
+		expect(left.y).toBeCloseTo(right.y, 1);
+		for (const size of sizes) {
+			expect(size.width).toBeGreaterThan(12);
+			expect(size.height).toBeGreaterThan(25);
+		}
+		harness.character.destroy();
+	});
+
+	it.each(["jumping", "quickHappy"])("%s 只复用基础运动，不继承入场编排", (scene) => {
+		const harness = createVisualHarness();
+		harness.character.playPreset(harness.presets.scenes[scene]);
+		for (let time = 16; time <= 400; time += 16) harness.frame(time);
+		expect(hasLiveTrail(harness.svg)).toBe(false);
+		expect(harness.character.hopAt).toBe(-1);
 		harness.character.destroy();
 	});
 

@@ -268,6 +268,7 @@
         VJt: geo.VJt,
         extras: ex,
         eyeLids: character.eyeLids,
+        frontFacing: character.frontFacing,
         steadyGaze,
         ringHint,
         badgeRing: restRing,

@@ -71,6 +71,7 @@
         this.expressionState = null;
         this.faceState = null;
         this.gazeState = null;
+        this.choreographyState = null;
         this.sceneDirection = 0;
         this.sceneVariant = null;
         this.faceRoll = 0;
@@ -196,7 +197,12 @@
             stretchBlinked: false,
             quizzicalBlinked: false,
           },
-          choreography: { wakingBurst: false },
+          choreography: {
+            happyBounced: false,
+            playfulSpun: false,
+            proudFlourished: false,
+            wakingBurst: false,
+          },
         };
       }
 
@@ -336,6 +342,8 @@
         const expression = scene.expression ?? this.expressionState ?? motion;
         const face = scene.face ?? this.faceState ?? motion;
         const gaze = scene.gaze ?? this.gazeState ?? expression;
+        const choreography =
+          typeof scene.choreography === "string" ? scene.choreography : null;
         const direction =
           scene.direction === -1 || scene.direction === 1 ? scene.direction : 0;
         const variant =
@@ -349,7 +357,9 @@
         const visualChanged = this.visual.differs(scene);
         const gazeChanged = gaze !== this.gazeState;
         const performanceChanged =
-          direction !== this.sceneDirection || variant !== this.sceneVariant;
+          choreography !== this.choreographyState ||
+          direction !== this.sceneDirection ||
+          variant !== this.sceneVariant;
         if (
           !motionChanged &&
           !expressionChanged &&
@@ -368,6 +378,7 @@
         this.expressionState = expression;
         this.faceState = face;
         this.gazeState = gaze;
+        this.choreographyState = choreography;
         this.sceneDirection = direction;
         this.sceneVariant = variant;
 
@@ -446,8 +457,8 @@
       spinOnce(turns = 1, direction = this.sign()) {
         this._pn(turns, direction);
       }
-      bounceOnce() {
-        this._hop(this._now());
+      hopOnce() {
+        this._startHop(this._now());
       }
       pounceOnce(direction = 0, strength = 1) {
         if (this.reduceMotion || this.paused) return;
@@ -496,7 +507,8 @@
         this.spinTurn = this.actionController.startSpin(turns, dir);
       }
 
-      _hop(now) {
+      _startHop(now) {
+        if (this.reduceMotion || this.paused) return;
         if (this.hopAt < 0) this.hopAt = now;
       }
 
@@ -580,6 +592,7 @@
           faceRoll: this.faceRoll,
           faceTune: this.faceTune,
           followPointer: this.followPointer,
+          frontFacing: this.expressionState === "front",
           gazeState: this.gazeState,
           gazeTarget: this.gazeTarget,
           gazeX: this.gazeX,
@@ -661,12 +674,42 @@
           this.eyeController.queueBlink(this.blinkQueue, now);
         if (motion.impulse.spin) this._pn(...motion.impulse.spin);
         for (const event of this.choreographyController.sample(
-          this.motionState,
+          this.choreographyState,
           dtState,
           this.ctx.choreography,
+          { direction: this.sceneDirection },
         )) {
           if (event.channel === "particles" && event.type === "burst") {
             this.renderer.burst(event.count, event.strength);
+          } else if (event.channel === "action") {
+            if (event.type === "hop") {
+              this._startHop(now);
+              continue;
+            }
+            if (event.type === "spin") {
+              this._pn(event.turns, event.direction);
+              continue;
+            }
+            const trickKind =
+              event.type === "spin-bounce"
+                ? "spinBounce"
+                : event.type === "spin-dizzy"
+                  ? "spinDizzy"
+                  : null;
+            if (
+              trickKind &&
+              !this.reduceMotion &&
+              !this.spinTurn &&
+              !this.trick &&
+              this.hopAt < 0
+            ) {
+              this.trick = this.actionController.startTrick(
+                trickKind,
+                this.reduceMotion,
+                now,
+                event.direction,
+              );
+            }
           }
         }
 
@@ -687,12 +730,12 @@
         }
 
         const tf = this.actionController.sampleTrick(this.trick, now);
-        if (tf.requestHop) this._hop(now);
+        if (tf.requestHop) this._startHop(now);
         if (tf.done) this.trick = null;
-        let hop = this.actionController.sampleHop(this.hopAt, now);
-        if (hop == null) {
+        let hopY = this.actionController.sampleHop(this.hopAt, now);
+        if (hopY == null) {
           this.hopAt = -1;
-          hop = 0;
+          hopY = 0;
         }
         let turnRadians = tf.turnRadians;
         if (this.spinTurn) {
@@ -700,7 +743,7 @@
           if (this.actionController.spinSettled(this.spinTurn))
             this.spinTurn = null;
         }
-        this.extras = { ...tf, turnRadians, hopYPx: hop };
+        this.extras = { ...tf, turnRadians, hopYPx: hopY };
 
         if (this.extras.eyeScale != null)
           this.eyeScale.t = this.extras.eyeScale;

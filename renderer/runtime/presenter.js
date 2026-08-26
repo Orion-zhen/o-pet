@@ -44,7 +44,7 @@
     function trigger(step) {
       if (step.wink) character.winkOnce();
       if (step.spin) character.spinOnce(step.spin.turns, step.spin.direction);
-      if (step.bounce) character.bounceOnce();
+      if (step.hop) character.hopOnce();
       if (step.pounce)
         character.pounceOnce(step.pounce.direction, step.pounce.strength);
     }

@@ -3,19 +3,24 @@
   function create(math) {
     const { spring, K2, rand, sign } = math;
 
-    const HOP_SEGS = [
+    const HOP_SEGMENTS = [
       { h: 48, d: 0.5 },
       { h: 28, d: 0.382 },
       { h: 14, d: 0.27 },
     ];
-    const HOP_DUR = HOP_SEGS.reduce((s, x) => s + x.d, 0);
+    const HOP_DURATION = HOP_SEGMENTS.reduce(
+      (sum, segment) => sum + segment.d,
+      0,
+    );
+    const SPIN_BOUNCE_SPIN_DURATION = 0.7;
+    const SPIN_BOUNCE_SETTLE_DURATION = 0.08;
 
-    function hopY(hopAt, now) {
-      if (hopAt < 0) return 0;
-      const Et = (now - hopAt) / 1000;
-      if (Et >= HOP_DUR) return null;
+    function sampleHop(startedAt, now) {
+      if (startedAt < 0) return 0;
+      const Et = (now - startedAt) / 1000;
+      if (Et >= HOP_DURATION) return null;
       let En = 0;
-      for (const seg of HOP_SEGS) {
+      for (const seg of HOP_SEGMENTS) {
         if (Et < En + seg.d) {
           const bn = (Et - En) / seg.d;
           return -4 * seg.h * bn * (1 - bn);
@@ -25,9 +30,9 @@
       return 0;
     }
 
-    function startTrick(kind, reduce, now) {
+    function startTrick(kind, reduce, now, direction = 0) {
       if (reduce) return null;
-      const dir = sign();
+      const dir = direction === -1 || direction === 1 ? direction : sign();
       const turns =
         kind === "spinDizzy"
           ? Math.round(rand(3, 4))
@@ -120,10 +125,15 @@
           eyeBoost = 1.12 - 0.09 * pl;
         } else done = true;
       } else if (kind === "spinBounce") {
-        if (Et < 0.7) turn = turns * Math.PI * 2 * dir * K2(Et / 0.7);
-        else {
-          wantHop = true;
-          done = true;
+        const fullTurn = turns * Math.PI * 2 * dir;
+        if (Et < SPIN_BOUNCE_SPIN_DURATION) {
+          turn = fullTurn * K2(Et / SPIN_BOUNCE_SPIN_DURATION);
+        } else {
+          turn = fullTurn;
+          const hopStart =
+            SPIN_BOUNCE_SPIN_DURATION + SPIN_BOUNCE_SETTLE_DURATION;
+          wantHop = Et >= hopStart;
+          done = Et >= hopStart + HOP_DURATION;
         }
       }
 
@@ -153,9 +163,9 @@
     }
 
     return Object.freeze({
-      HOP_SEGS,
-      HOP_DUR,
-      sampleHop: hopY,
+      HOP_SEGMENTS,
+      HOP_DURATION,
+      sampleHop,
       startTrick,
       sampleTrick: evalTrick,
       startSpin: makeSpinTurn,

@@ -8,7 +8,7 @@
       dreaming: [13],
       waking: [13],
       idle: [0, 8],
-      front: [0, 8],
+      front: [25, 26],
       listening: [10, 1, 19],
       stretching: [4, 0],
       startled: [3, 21],

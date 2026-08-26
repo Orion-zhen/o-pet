@@ -391,10 +391,6 @@
           xPx = Math.sin(globalSec * 1.1) * 4;
           yPx = -Math.abs(Math.sin(globalSec * 2.2)) * 3;
           squashY = 1 + Math.sin(globalSec * 2.2) * 0.015;
-          if (now >= context.stAt) {
-            spin = [1, sign()];
-            context.stAt = now + rand(3500, 6000);
-          }
           break;
         case "celebrate":
           yPx = -Math.abs(Math.sin(globalSec * 1.6)) * 2.5;

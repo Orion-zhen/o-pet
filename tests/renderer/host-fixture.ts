@@ -35,7 +35,7 @@ class CharacterStub {
 	readonly playedStates: string[] = [];
 	colorId: string;
 	destroyed = false;
-	bounceCount = 0;
+	hopCount = 0;
 	pounceCount = 0;
 	spinCount = 0;
 	winkCount = 0;
@@ -107,8 +107,8 @@ class CharacterStub {
 		this.spinCount += 1;
 	}
 
-	bounceOnce(): void {
-		this.bounceCount += 1;
+	hopOnce(): void {
+		this.hopCount += 1;
 	}
 
 	pounceOnce(): void {
@@ -200,13 +200,25 @@ export function createHarness(initiallyHidden = false, random = (): number => 0)
 			instances.push(this);
 		}
 
+		override setPreset(value: unknown): void {
+			const previous = this.scenes.at(-1);
+			super.setPreset(value);
+			const current = this.scenes.at(-1);
+			if (
+				previous?.pose === "playful"
+				&& previous.expression === "playful"
+				&& current?.pose === "playful"
+				&& current.expression === "playful"
+			) highEnergyAt.push(clock.now);
+		}
+
 		override spinOnce(): void {
 			super.spinOnce();
 			highEnergyAt.push(clock.now);
 		}
 
-		override bounceOnce(): void {
-			super.bounceOnce();
+		override hopOnce(): void {
+			super.hopOnce();
 			highEnergyAt.push(clock.now);
 		}
 	}
