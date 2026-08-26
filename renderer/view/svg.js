@@ -227,7 +227,8 @@
       if (ex.turnRadians != null) cyl = (cyl ?? 0) + ex.turnRadians;
       const ringHint = morphing || turned ? liveRing : null;
       const steadyGaze =
-        character.gazeState === "front" || character.gazeState === "sleeping";
+        character.gazeState === "sleeping" ||
+        (character.gazeState === "front" && character.frontBlend.t === 0);
       const hasPtr =
         !steadyGaze &&
         !!(
@@ -268,7 +269,7 @@
         VJt: geo.VJt,
         extras: ex,
         eyeLids: character.eyeLids,
-        frontFacing: character.frontFacing,
+        frontBlend: character.frontBlend.x,
         steadyGaze,
         ringHint,
         badgeRing: restRing,

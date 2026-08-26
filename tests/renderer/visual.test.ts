@@ -181,6 +181,48 @@ describe("渲染器视觉运行时", () => {
 		harness.character.destroy();
 	});
 
+	it("front 的正面布局在切入和切出时连续过渡", () => {
+		const harness = createVisualHarness();
+		const midpoint = (): { x: number; y: number } => {
+			const centers = renderedEyeCenters(harness.svg);
+			const [left, right] = centers;
+			if (left === undefined || right === undefined) throw new Error("缺少眼形");
+			return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+		};
+		const distance = (
+			left: { x: number; y: number },
+			right: { x: number; y: number },
+		): number => Math.hypot(left.x - right.x, left.y - right.y);
+
+		harness.character.playPreset(harness.presets.scenes.curious);
+		for (let time = 16; time <= 800; time += 16) harness.frame(time);
+		const beforeEntry = midpoint();
+		harness.setTime(800);
+		harness.character.setPreset(harness.presets.scenes.front);
+		harness.frame(816);
+		const firstEntry = midpoint();
+		expect(harness.character.frontBlend.x).toBeGreaterThan(0);
+		expect(harness.character.frontBlend.x).toBeLessThan(1);
+		for (let time = 832; time <= 1808; time += 16) harness.frame(time);
+		const afterEntry = midpoint();
+		expect(distance(beforeEntry, firstEntry)).toBeLessThan(
+			distance(beforeEntry, afterEntry) * 0.35,
+		);
+
+		harness.setTime(1808);
+		harness.character.setPreset(harness.presets.scenes.idle);
+		harness.frame(1824);
+		const firstExit = midpoint();
+		expect(harness.character.frontBlend.x).toBeGreaterThan(0);
+		expect(harness.character.frontBlend.x).toBeLessThan(1);
+		for (let time = 1840; time <= 2816; time += 16) harness.frame(time);
+		const afterExit = midpoint();
+		expect(distance(afterEntry, firstExit)).toBeLessThan(
+			distance(afterEntry, afterExit) * 0.35,
+		);
+		harness.character.destroy();
+	});
+
 	it.each(SHAPES)("front 在 %s 身形上将眼睛放在脸部正中", (shape) => {
 		const harness = createVisualHarness();
 		harness.character.setReduceMotion(true);

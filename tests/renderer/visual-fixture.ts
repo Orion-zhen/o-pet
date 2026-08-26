@@ -23,6 +23,7 @@ interface VisualCharacter {
 	readonly ctx: Record<string, unknown>;
 	readonly extras: { hopYPx: number; turnRadians: number | null };
 	readonly eyeTo: number;
+	readonly frontBlend: { t: number; v: number; x: number };
 	readonly faceAt: number;
 	readonly hopAt: number;
 	readonly motionAt: number;

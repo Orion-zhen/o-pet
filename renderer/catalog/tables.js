@@ -151,6 +151,7 @@
       squash: [10, 0.8],
       blink: [26, 1],
       eyeScale: [9, 0.85],
+      front: [8, 1],
       gazeX: [13, 1],
       gazeY: [13, 1],
       notify: [9, 0.55],

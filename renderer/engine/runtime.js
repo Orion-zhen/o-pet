@@ -108,6 +108,7 @@
         this.gazeX = spring(0);
         this.gazeY = spring(0);
         this.eyeMorph = spring(1);
+        this.frontBlend = spring(this.state === "front" ? 1 : 0);
         this.shapeSpring = spring(1);
 
         this.eyeFrom = 0;
@@ -381,6 +382,7 @@
         this.choreographyState = choreography;
         this.sceneDirection = direction;
         this.sceneVariant = variant;
+        this.frontBlend.t = expression === "front" ? 1 : 0;
 
         if (motionChanged || performanceChanged || restart) {
           this.motionAt = now;
@@ -592,7 +594,7 @@
           faceRoll: this.faceRoll,
           faceTune: this.faceTune,
           followPointer: this.followPointer,
-          frontFacing: this.expressionState === "front",
+          frontBlend: this.frontBlend,
           gazeState: this.gazeState,
           gazeTarget: this.gazeTarget,
           gazeX: this.gazeX,
@@ -810,6 +812,7 @@
 
         if (this.reduceMotion) {
           this._morphEyes(EYE_PLAYLIST[this.expressionState][0]);
+          resetSpring(this.frontBlend, this.frontBlend.t);
           this.spin.t = 0;
           this.tx.t = 0;
           this.ty.t = 0;
@@ -822,6 +825,7 @@
         const step = dt / nSteps;
         for (let i = 0; i < nSteps; i++) {
           stepSpring(this.eyeMorph, this.eyeStiffness, 1, step);
+          stepSpring(this.frontBlend, ...SPRINGS.front, step);
           if (this.spinTurn)
             stepSpring(this.spinTurn, ...SPRINGS.spinTurn, step);
           stepSpring(this.spin, ...SPRINGS.spin, step);

@@ -62,7 +62,8 @@
         ringHint,
       } = opt;
       const pulse = 1 + 0.07 * Math.sin(morphT * Math.PI);
-      const frontFacing = opt.frontFacing === true;
+      const frontBlend = clamp(opt.frontBlend, 0, 1);
+      const freeBlend = 1 - frontBlend;
       const $i = {
         x: face.x,
         y: face.y,
@@ -71,7 +72,7 @@
         eye: face.eye * (faceTune?.size ?? 1),
         leftDX: face.leftDX ?? 0,
       };
-      const sX = uniformEyes && !frontFacing ? $i.leftDX : 0;
+      const sX = uniformEyes ? $i.leftDX * freeBlend : 0;
       const cents = [centroid(polys[0]), centroid(polys[1])];
       let a1 = 0,
         o1 = 0;
@@ -80,8 +81,9 @@
       const l1 = Math.abs(cents[1][0] - (cents[0][0] + sX)) * $i.sx;
       const pre = uniformEyes ? 0 : VJt;
       const _ee = a1 + o1 > 0.5 ? clamp((l1 - pre) / (a1 + o1), 0.35, 4) : 4;
+      const baseEyeScale = uniformEyes ? 1 : $i.eye;
       const Uee =
-        (frontFacing ? $i.eye : uniformEyes ? 1 : $i.eye) *
+        (baseEyeScale + ($i.eye - baseEyeScale) * frontBlend) *
         clamp(eyeScaleProp, 0.25, 4);
       const oX = Math.min(clamp(opt.eyeBoostX, 0.2, 2) * Uee, _ee / pulse);
       const Hee = Math.min(
@@ -104,6 +106,19 @@
       const Yl = badgeRing
         ? badgeRing[Math.round((badgeRing.length * 7) / 8) % badgeRing.length]
         : [Re, shape.top];
+      const faceRotation = cr
+        ? [
+            cr[0] + (1 - cr[0]) * frontBlend,
+            cr[1] * freeBlend,
+            cr[2] * freeBlend,
+            cr[3] * freeBlend,
+            cr[4] + (1 - cr[4]) * frontBlend,
+            cr[5] * freeBlend,
+            cr[6] * freeBlend,
+            cr[7] * freeBlend,
+            cr[8] + (1 - cr[8]) * frontBlend,
+          ]
+        : null;
 
       for (let i = 0; i < 2; i++) {
         const poly = polys[i];
@@ -123,20 +138,19 @@
           bre = true,
           Tre = 1;
         let Sre = clamp(Re + $i.y + (Ti - Re) * $i.sy, top + 2, bottom - 2);
-        const surfaceTurn = frontFacing ? null : turn;
-        const use3d = !!cr && !frontFacing;
-        if (frontFacing) {
-          Wo = (i === 0 ? -28 : 28) * $i.sx;
-          Sre = clamp(Re + $i.y, top + 2, bottom - 2);
-        }
+        const surfaceTurn = turn == null ? null : turn * freeBlend;
+        const use3d = faceRotation !== null && frontBlend < 1;
 
-        if (use3d) {
+        if (faceRotation && use3d) {
           const xr = (Ea - Re) / Re;
           const Fr = (Re - Ti) / Re;
           const Ia = Math.sqrt(Math.max(0, 1 - xr * xr - Fr * Fr)) || 0.02;
-          const li = cr[0] * xr + cr[1] * Fr + cr[2] * Ia;
-          const bl = cr[3] * xr + cr[4] * Fr + cr[5] * Ia;
-          const Io = cr[6] * xr + cr[7] * Fr + cr[8] * Ia;
+          const li =
+            faceRotation[0] * xr + faceRotation[1] * Fr + faceRotation[2] * Ia;
+          const bl =
+            faceRotation[3] * xr + faceRotation[4] * Fr + faceRotation[5] * Ia;
+          const Io =
+            faceRotation[6] * xr + faceRotation[7] * Fr + faceRotation[8] * Ia;
           Wo = li * Re * $i.sx;
           Sre = clamp(Re + $i.y - bl * Re * $i.sy, top + 2, bottom - 2);
           let uo = -Fr * xr,
@@ -155,10 +169,22 @@
           const md = Fr * Zi - Ia * Tl,
             Oc = Ia * uo - xr * Zi,
             yu = xr * Tl - Fr * uo;
-          const vm = cr[0] * uo + cr[1] * Tl + cr[2] * Zi;
-          const Hme = cr[3] * uo + cr[4] * Tl + cr[5] * Zi;
-          const Nre = cr[0] * md + cr[1] * Oc + cr[2] * yu;
-          const Ere = cr[3] * md + cr[4] * Oc + cr[5] * yu;
+          const vm =
+            faceRotation[0] * uo +
+            faceRotation[1] * Tl +
+            faceRotation[2] * Zi;
+          const Hme =
+            faceRotation[3] * uo +
+            faceRotation[4] * Tl +
+            faceRotation[5] * Zi;
+          const Nre =
+            faceRotation[0] * md +
+            faceRotation[1] * Oc +
+            faceRotation[2] * yu;
+          const Ere =
+            faceRotation[3] * md +
+            faceRotation[4] * Oc +
+            faceRotation[5] * yu;
           const Cre = md,
             Ha = -Oc,
             ci = uo,
@@ -192,17 +218,22 @@
           Tre = Dke(clamp(Io0 / 0.5, 0, 1));
         }
 
-        let Kj = opt.steadyGaze
-          ? 0
-          : Math.sin(now * 42e-5 + i) * 1.4 +
-            Math.sin(now * 0.001 + i * 2) * 0.5;
-        let Ko = opt.steadyGaze ? 0 : Math.sin(now * 58e-5 + i) * 0.9;
+        Ca += (Re + $i.x - Ca) * frontBlend;
+        Wo += ((i === 0 ? -28 : 28) * $i.sx - Wo) * frontBlend;
+        Sre += (clamp(Re + $i.y, top + 2, bottom - 2) - Sre) * frontBlend;
+
+        const ambientBlend = opt.steadyGaze ? 0 : freeBlend;
+        let Kj =
+          (Math.sin(now * 42e-5 + i) * 1.4 +
+            Math.sin(now * 0.001 + i * 2) * 0.5) *
+          ambientBlend;
+        let Ko = Math.sin(now * 58e-5 + i) * 0.9 * ambientBlend;
         if (pointer) {
-          Kj += pointer.x * (1 - 0.6 * Vn) + pullX;
-          Ko += pointer.y * (1 - 0.6 * Vn) + pullY;
+          Kj += (pointer.x * (1 - 0.6 * Vn) + pullX) * ambientBlend;
+          Ko += (pointer.y * (1 - 0.6 * Vn) + pullY) * ambientBlend;
         } else {
-          Kj += pullX;
-          Ko += pullY;
+          Kj += pullX * ambientBlend;
+          Ko += pullY * ambientBlend;
         }
         Kj += gazeX * gazeW + (extras.gazeXPx || 0);
         Ko += gazeY * gazeW + (extras.gazeYPx || 0);
