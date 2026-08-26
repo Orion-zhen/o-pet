@@ -18,7 +18,10 @@ use tray_icon::{
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
-use wry::{NewWindowResponse, PermissionResponse, WebView, WebViewBuilder};
+use wry::{
+    NewWindowResponse, PermissionResponse, WebView, WebViewBuilder,
+    http::{Response, StatusCode, header::CONTENT_TYPE},
+};
 
 #[cfg(target_os = "macos")]
 use super::macos as native;
@@ -179,6 +182,9 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
     let webview = WebViewBuilder::new()
         .with_transparent(true)
         .with_background_color((0, 0, 0, 0))
+        .with_custom_protocol(crate::renderer::PROTOCOL.into(), |_, request| {
+            renderer_response(request.uri().path())
+        })
         .with_initialization_script(NATIVE_BRIDGE)
         .with_ipc_handler(move |request| {
             if let Ok(message) = serde_json::from_str::<PageMessage>(request.body()) {
@@ -192,7 +198,7 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
         .with_hotkeys_zoom(false)
         .with_accept_first_mouse(true)
         .with_devtools(false)
-        .with_html(crate::renderer::PAGE)
+        .with_url(crate::renderer::DOCUMENT_URL)
         .build(&window)?;
     window.set_visible(true);
 
@@ -465,10 +471,32 @@ fn send_update(webview: &WebView, update: AnimationUpdate) {
     }
 }
 
+fn renderer_response(path: &str) -> Response<std::borrow::Cow<'static, [u8]>> {
+    match crate::renderer::asset(path) {
+        Some(asset) => Response::builder()
+            .header(CONTENT_TYPE, asset.content_type)
+            .body(asset.body)
+            .expect("固定的渲染资源响应必须有效"),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(std::borrow::Cow::Borrowed(b"not found"))
+            .expect("固定的渲染资源错误响应必须有效"),
+    }
+}
+
 fn is_internal_document_uri(uri: &str) -> bool {
-    uri == "about:blank"
-        || uri.starts_with("about:blank#")
-        || uri.starts_with("data:text/html;charset=utf-8;base64,")
+    if uri == "about:blank" || uri.starts_with("about:blank#") {
+        return true;
+    }
+    [crate::renderer::DOCUMENT_URL, "http://o-pet.app/index.html"]
+        .iter()
+        .any(|document| {
+            uri == *document
+                || uri
+                    .strip_prefix(document)
+                    .is_some_and(|rest| rest.starts_with('#'))
+        })
 }
 
 #[cfg(test)]
@@ -483,14 +511,18 @@ mod tests {
         for uri in [
             "about:blank",
             "about:blank#renderer",
-            "data:text/html;charset=utf-8;base64,PGh0bWw+PC9odG1sPg==",
+            "o-pet://app/index.html",
+            "o-pet://app/index.html#renderer",
+            "http://o-pet.app/index.html",
         ] {
             assert!(is_internal_document_uri(uri), "应允许 {uri}");
         }
         for uri in [
             "https://example.com",
             "data:text/html,<html></html>",
+            "data:text/html;charset=utf-8;base64,PGh0bWw+PC9odG1sPg==",
             "data:text/plain;charset=utf-8;base64,dGVzdA==",
+            "o-pet://app/host.js",
             "about:srcdoc",
         ] {
             assert!(!is_internal_document_uri(uri), "应拒绝 {uri}");

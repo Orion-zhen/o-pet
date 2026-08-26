@@ -135,4 +135,4 @@
   }
 
   g.O_PET_SCHEDULER = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

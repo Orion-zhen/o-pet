@@ -98,4 +98,4 @@
   }
 
   g.O_PET_PRESENTER = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

@@ -141,5 +141,5 @@
     return Object.freeze({ next });
   }
 
-  g.GROK_GAZE = Object.freeze({ create });
-})(window);
+  g.OPET_GAZE = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

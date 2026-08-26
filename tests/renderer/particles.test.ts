@@ -32,9 +32,9 @@ function createParticleHarness(): {
 	const back = createElement("g");
 	const front = createElement("g");
 	const windowStub: {
-		GROK_PARTICLES?: { create(options: unknown): ParticleController };
-		GROK_GEO: { Re: number };
-	} = { GROK_GEO: { Re: 114.2705 } };
+		OPET_PARTICLES?: { create(options: unknown): ParticleController };
+		OPET_GEO: { Re: number };
+	} = { OPET_GEO: { Re: 114.2705 } };
 	const deterministicMath = Object.create(Math) as Math;
 	deterministicMath.random = () => 0.5;
 	const context = {
@@ -46,7 +46,7 @@ function createParticleHarness(): {
 	vm.runInNewContext(mathSource, context);
 	vm.runInNewContext(geometryEngineSource, context);
 	vm.runInNewContext(particlesSource, context);
-	const factory = windowStub.GROK_PARTICLES;
+	const factory = windowStub.OPET_PARTICLES;
 	if (factory === undefined) throw new Error("粒子渲染器未加载");
 	return {
 		elements,
@@ -55,7 +55,7 @@ function createParticleHarness(): {
 			clamp: (number: number, minimum: number, maximum: number): number => (
 				Math.min(maximum, Math.max(minimum, number))
 			),
-			data: windowStub.GROK_GEO,
+			data: windowStub.OPET_GEO,
 			document: context.document,
 			front,
 			getRadius: () => 52,

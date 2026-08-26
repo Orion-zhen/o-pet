@@ -102,4 +102,4 @@
   }
 
   g.O_PET_CUES = Object.freeze({ COMPLETION, PRIORITY, create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

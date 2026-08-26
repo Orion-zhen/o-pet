@@ -287,5 +287,5 @@
     return Object.freeze({ queueBlink, consumeBlink, paintEyes });
   }
 
-  g.GROK_EYES = Object.freeze({ create });
-})(window);
+  g.OPET_EYES = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

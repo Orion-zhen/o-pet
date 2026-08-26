@@ -17,8 +17,8 @@ use webkit6::prelude::{PolicyDecisionExt, WebViewExt};
 
 use crate::config::{Config, RendererPreferences};
 use webkit6::{
-    LoadEvent, NavigationPolicyDecision, PolicyDecisionType, UserContentInjectedFrames,
-    UserContentManager, UserScript, UserScriptInjectionTime, WebView,
+    NavigationPolicyDecision, PolicyDecisionType, URISchemeRequest, UserContentInjectedFrames,
+    UserContentManager, UserScript, UserScriptInjectionTime, WebContext, WebView,
 };
 
 const ANIMATION_QUEUE_CAPACITY: usize = 256;
@@ -29,6 +29,9 @@ Object.defineProperty(window, "oPetNative", {
     value: Object.freeze({
         postDrag(message) {
             window.webkit.messageHandlers.drag.postMessage(message);
+        },
+        ready() {
+            window.webkit.messageHandlers.ready.postMessage(null);
         },
     }),
     writable: false,
@@ -312,10 +315,20 @@ fn build_window(
     configure_layer_surface(&window, &selected.monitor, &placement.borrow());
     window.remove_css_class("background");
 
+    let web_context = WebContext::new();
+    web_context.register_uri_scheme(crate::renderer::PROTOCOL, respond_renderer_asset);
+    if let Some(security_manager) = web_context.security_manager() {
+        security_manager.register_uri_scheme_as_secure(crate::renderer::PROTOCOL);
+    }
+
     let content_manager = UserContentManager::new();
     assert!(
         content_manager.register_script_message_handler("drag", None),
         "拖拽消息处理器名称必须唯一"
+    );
+    assert!(
+        content_manager.register_script_message_handler("ready", None),
+        "就绪消息处理器名称必须唯一"
     );
     content_manager.add_script(&UserScript::new(
         NATIVE_BRIDGE,
@@ -333,6 +346,7 @@ fn build_window(
     );
 
     let web_view = WebView::builder()
+        .web_context(&web_context)
         .user_content_manager(&content_manager)
         .build();
     restrict_navigation(&web_view);
@@ -342,20 +356,14 @@ fn build_window(
     web_view.set_background_color(&gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
     let current_activity = Rc::new(Cell::new(Activity::Idle));
     let page_loaded = Rc::new(Cell::new(false));
-    let loaded_activity = Rc::clone(&current_activity);
-    let loaded_flag = Rc::clone(&page_loaded);
-    let preferences = config.renderer.clone();
-    web_view.connect_load_changed(move |web_view, event| {
-        if event == LoadEvent::Finished {
-            loaded_flag.set(true);
-            send_preferences(web_view, &preferences);
-            if let Some(action) = &action {
-                show_action(web_view, action);
-            } else {
-                send_update(web_view, AnimationUpdate::steady(loaded_activity.get()));
-            }
-        }
-    });
+    connect_ready_handler(
+        &content_manager,
+        &web_view,
+        config.renderer.clone(),
+        action,
+        Rc::clone(&current_activity),
+        Rc::clone(&page_loaded),
+    );
 
     let weak_web_view = web_view.downgrade();
     gtk::glib::MainContext::default().spawn_local(async move {
@@ -369,7 +377,7 @@ fn build_window(
             }
         }
     });
-    web_view.load_html(crate::renderer::PAGE, None);
+    web_view.load_uri(crate::renderer::DOCUMENT_URL);
 
     let weak_window = window.downgrade();
     let weak_application = application.downgrade();
@@ -425,8 +433,26 @@ fn restrict_navigation(web_view: &WebView) {
     });
 }
 
+fn respond_renderer_asset(request: &URISchemeRequest) {
+    let path = request.path();
+    let Some(asset) = path.as_deref().and_then(crate::renderer::asset) else {
+        let mut error = gtk::glib::Error::new(gtk::gio::IOErrorEnum::NotFound, "找不到渲染资源");
+        request.finish_error(&mut error);
+        return;
+    };
+    let length = i64::try_from(asset.body.len()).expect("渲染资源长度必须能用 i64 表示");
+    let bytes = gtk::glib::Bytes::from_owned(asset.body.into_owned());
+    let stream = gtk::gio::MemoryInputStream::from_bytes(&bytes);
+    request.finish(&stream, length, Some(asset.content_type));
+}
+
 fn is_internal_document_uri(uri: &str) -> bool {
-    uri == "about:blank" || uri.starts_with("about:blank#")
+    uri == "about:blank"
+        || uri.starts_with("about:blank#")
+        || uri == crate::renderer::DOCUMENT_URL
+        || uri
+            .strip_prefix(crate::renderer::DOCUMENT_URL)
+            .is_some_and(|rest| rest.starts_with('#'))
 }
 
 fn send_preferences(web_view: &WebView, preferences: &RendererPreferences) {
@@ -493,6 +519,32 @@ fn configure_layer_surface(
     window.set_anchor(Edge::Bottom, true);
     window.set_monitor(Some(monitor));
     apply_placement(window, placement);
+}
+
+fn connect_ready_handler(
+    content_manager: &UserContentManager,
+    web_view: &WebView,
+    preferences: RendererPreferences,
+    action: Option<String>,
+    current_activity: Rc<Cell<Activity>>,
+    page_loaded: Rc<Cell<bool>>,
+) {
+    let weak_web_view = web_view.downgrade();
+    content_manager.connect_script_message_received(Some("ready"), move |_, _| {
+        if page_loaded.get() {
+            return;
+        }
+        let Some(web_view) = weak_web_view.upgrade() else {
+            return;
+        };
+        page_loaded.set(true);
+        send_preferences(&web_view, &preferences);
+        if let Some(action) = &action {
+            show_action(&web_view, action);
+        } else {
+            send_update(&web_view, AnimationUpdate::steady(current_activity.get()));
+        }
+    });
 }
 
 fn connect_drag_handler(
@@ -642,11 +694,14 @@ mod tests {
     fn only_allows_the_embedded_document_uri() {
         assert!(is_internal_document_uri("about:blank"));
         assert!(is_internal_document_uri("about:blank#pet"));
+        assert!(is_internal_document_uri("o-pet://app/index.html"));
+        assert!(is_internal_document_uri("o-pet://app/index.html#pet"));
         for uri in [
             "data:text/html,external",
             "file:///tmp/pet.html",
             "https://example.com",
             "http://127.0.0.1/pet",
+            "o-pet://app/host.js",
         ] {
             assert!(!is_internal_document_uri(uri), "不应允许 {uri}");
         }

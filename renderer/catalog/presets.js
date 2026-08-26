@@ -238,7 +238,7 @@
     });
   }
 
-  g.GROK_PRESETS = Object.freeze({
+  g.OPET_PRESETS = Object.freeze({
     CHANNELS,
     scenes,
     fromState,
@@ -246,4 +246,4 @@
     replaceChannels,
     resolve,
   });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

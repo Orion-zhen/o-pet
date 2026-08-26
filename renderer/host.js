@@ -38,26 +38,26 @@
       now: rawNow,
     });
     const now = scheduler.now;
-    const presets = g.GROK_PRESETS;
-    const tables = g.GROK_TABLES.create(g.GROK_GEO, g.O_PET_ACTION_GROUPS);
+    const presets = g.OPET_PRESETS;
+    const tables = g.OPET_TABLES.create(g.OPET_GEO, g.O_PET_ACTION_GROUPS);
     const scenes = presets.scenes;
-    const sequences = g.GROK_SEQUENCES.create(presets);
-    const math = g.GROK_MATH.create(random);
-    const geometry = g.GROK_GEOMETRY.create({ data: g.GROK_GEO, math });
-    const effects = g.GROK_EFFECTS.create({ data: g.GROK_GEO, math });
-    const eyes = g.GROK_EYES.create({ geometry, math }, random);
+    const sequences = g.OPET_SEQUENCES.create(presets);
+    const math = g.OPET_MATH.create(random);
+    const geometry = g.OPET_GEOMETRY.create({ data: g.OPET_GEO, math });
+    const effects = g.OPET_EFFECTS.create({ data: g.OPET_GEO, math });
+    const eyes = g.OPET_EYES.create({ geometry, math }, random);
     const character = g.O_PET_RUNTIME.create(
       {
-        actions: g.GROK_ACTIONS,
-        choreography: g.GROK_CHOREOGRAPHY,
-        data: g.GROK_GEO,
+        actions: g.OPET_ACTIONS,
+        choreography: g.OPET_CHOREOGRAPHY,
+        data: g.OPET_GEO,
         effects,
-        expression: g.GROK_EXPRESSION,
+        expression: g.OPET_EXPRESSION,
         eyes,
-        gaze: g.GROK_GAZE,
+        gaze: g.OPET_GAZE,
         geometry,
         math,
-        motion: g.GROK_MOTION,
+        motion: g.OPET_MOTION,
         presets,
         tables,
         visualChannels: g.O_PET_VISUAL_CHANNELS,
@@ -66,14 +66,14 @@
         clock: scheduler,
         color: "black",
         createRenderer: () =>
-          g.GROK_RENDER.create(
+          g.OPET_RENDER.create(
             {
-              data: g.GROK_GEO,
+              data: g.OPET_GEO,
               effects,
               eyes,
               geometry,
               math,
-              particles: g.GROK_PARTICLES,
+              particles: g.OPET_PARTICLES,
               tables,
             },
             {
@@ -120,7 +120,7 @@
     });
     const preferences = g.O_PET_PREFERENCES.create({
       character,
-      geometry: g.GROK_GEO,
+      geometry: g.OPET_GEO,
       motionQuery,
     });
 
@@ -386,4 +386,4 @@
   }
 
   g.OPetRenderer = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

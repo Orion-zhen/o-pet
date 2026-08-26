@@ -1,7 +1,7 @@
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
-import { pageEndSource, pageStartSource } from "./sources.js";
+import { startSource } from "./sources.js";
 
 describe("渲染页面组合根", () => {
 	it("页面组合根为渲染器注入浏览器随机源", () => {
@@ -19,6 +19,14 @@ describe("渲染页面组合根", () => {
 			showAction(): void {},
 			update(): void {},
 		};
+		const modules = {
+			OPetRenderer: Object.freeze({
+				create(options: { random: unknown }): typeof renderer {
+					receivedRandom = options.random;
+					return renderer;
+				},
+			}),
+		};
 		const browserStub: Record<string, unknown> = {
 			addEventListener(): void {},
 			document,
@@ -27,28 +35,10 @@ describe("渲染页面组合根", () => {
 			Math: { random },
 			oPetNative: { postDrag(): void {}, ready(): void {} },
 			performance: { now: (): number => 0 },
-			receiveRandom(value: unknown): void {
-				receivedRandom = value;
-			},
-			renderer,
+			window: modules,
 		};
-		const rendererFactoryStub = `
-			window.OPetRenderer = Object.freeze({
-				create(options) {
-					browser.receiveRandom(options.random);
-					return browser.renderer;
-				},
-			});
-		`;
-		const html = pageStartSource + rendererFactoryStub + pageEndSource;
-		const scriptStart = html.indexOf("<script>");
-		const scriptEnd = html.lastIndexOf("</script>");
-		expect(scriptStart).toBeGreaterThanOrEqual(0);
-		expect(scriptEnd).toBeGreaterThan(scriptStart);
-		const script = html.slice(scriptStart + "<script>".length, scriptEnd);
-		vm.runInNewContext(script, browserStub);
+		vm.runInNewContext(startSource, browserStub);
 
 		expect(receivedRandom).toBe(random);
 	});
-
 });

@@ -173,5 +173,5 @@
     });
   }
 
-  g.GROK_ACTIONS = Object.freeze({ create });
-})(window);
+  g.OPET_ACTIONS = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

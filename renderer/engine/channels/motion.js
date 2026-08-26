@@ -447,5 +447,5 @@
     return Object.freeze({ sample });
   }
 
-  g.GROK_MOTION = Object.freeze({ create });
-})(window);
+  g.OPET_MOTION = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

@@ -244,4 +244,4 @@
   }
 
   g.O_PET_VISUAL_CHANNELS = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

@@ -323,5 +323,5 @@
     });
   }
 
-  g.GROK_TABLES = Object.freeze({ create });
-})(window);
+  g.OPET_TABLES = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

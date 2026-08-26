@@ -52,6 +52,8 @@ cargo run --release -- --show-action happy
 - `renderer/view/` 从帧模型生成 SVG。视图模块拥有 SVG 节点、特效和粒子资源，不读取动画运行时的内部对象。
 - `renderer/adapters/` 管理浏览器指针、原生拖动协议和动态偏好。`renderer/host.js` 是唯一组合根，只处理外部事件、行为优先级和销毁顺序。
 
+Rust 使用 `rust-embed` 将 `renderer/` 嵌入可执行文件，并通过内部 `o-pet://` 协议提供 HTML、CSS、JavaScript 和 JSON 资源。渲染页面不读取安装目录或外部网络资源。
+
 内部模块放在页面脚本的私有作用域中，浏览器全局只暴露 `window.oPet`。构造动画运行时所需的时钟、随机数、文档和渲染端口均由组合根注入。
 
 `renderer/view/geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。

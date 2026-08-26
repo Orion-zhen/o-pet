@@ -49,7 +49,7 @@
       hopYPx: 0,
     });
 
-    class GrokCharacter {
+    class OPetCharacter {
       constructor(opts) {
         this.clock = opts.clock;
         this.destroyed = false;
@@ -869,8 +869,8 @@
       }
     }
 
-    return new GrokCharacter(options);
+    return new OPetCharacter(options);
   }
 
   g.O_PET_RUNTIME = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

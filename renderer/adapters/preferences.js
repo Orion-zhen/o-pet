@@ -55,4 +55,4 @@
   }
 
   g.O_PET_PREFERENCES = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

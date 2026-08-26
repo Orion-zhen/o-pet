@@ -226,19 +226,19 @@ export function createHarness(initiallyHidden = false, random = (): number => 0)
 	const windowStub: Record<string, unknown> = {
 		addEventListener: pointerTarget.addEventListener.bind(pointerTarget),
 		removeEventListener: pointerTarget.removeEventListener.bind(pointerTarget),
-		GROK_GEO: {
+		OPET_GEO: {
 			palette: { black: {}, blue: {} },
 			shapes: { blob: {}, cloud: {} },
 		},
-		GROK_GEOMETRY: { create: (): object => ({}) },
-		GROK_EFFECTS: { create: (): object => ({}) },
-		GROK_EYES: { create: (): object => ({}) },
-		GROK_MATH: {
+		OPET_GEOMETRY: { create: (): object => ({}) },
+		OPET_EFFECTS: { create: (): object => ({}) },
+		OPET_EYES: { create: (): object => ({}) },
+		OPET_MATH: {
 			create: (source: () => number): { rand(minimum: number, maximum: number): number } => ({
 				rand: (minimum, maximum) => minimum + source() * (maximum - minimum),
 			}),
 		},
-		GROK_RENDER: { create: (): object => ({}) },
+		OPET_RENDER: { create: (): object => ({}) },
 		O_PET_RUNTIME: {
 			create: (_dependencies: unknown, options: CharacterOptions): CharacterStub => new HarnessCharacter({}, options),
 		},

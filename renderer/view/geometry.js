@@ -1,4 +1,4 @@
-/* Grok 几何内核。集中处理路径采样、轮廓变形、截面和形状派生数据。 */
+/* OPet 几何内核。集中处理路径采样、轮廓变形、截面和形状派生数据。 */
 (function (g) {
   function create(dependencies) {
     const { clamp } = dependencies.math;
@@ -577,5 +577,5 @@
     });
   }
 
-  g.GROK_GEOMETRY = Object.freeze({ create });
-})(window);
+  g.OPET_GEOMETRY = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

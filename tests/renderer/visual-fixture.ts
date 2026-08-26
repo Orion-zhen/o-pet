@@ -43,30 +43,30 @@ interface VisualCharacter {
 
 class VisualWindowStub extends EventTargetStub {
 	OPetRenderer?: RendererFactory;
-	GROK_ACTIONS?: object;
-	GROK_CHOREOGRAPHY?: object;
-	GROK_EFFECTS?: { create(dependencies: Record<string, unknown>): object };
-	GROK_EXPRESSION?: object;
-	GROK_EYES?: {
+	OPET_ACTIONS?: object;
+	OPET_CHOREOGRAPHY?: object;
+	OPET_EFFECTS?: { create(dependencies: Record<string, unknown>): object };
+	OPET_EXPRESSION?: object;
+	OPET_EYES?: {
 		create(dependencies: Record<string, unknown>, random: () => number): object;
 	};
-	GROK_GAZE?: object;
-	GROK_GEO?: {
+	OPET_GAZE?: object;
+	OPET_GEO?: {
 		Re: number;
 		shapes: Record<string, { face: { x: number; y: number } }>;
 	};
-	GROK_GEOMETRY?: { create(dependencies: Record<string, unknown>): object };
-	GROK_MATH?: { create(random: () => number): { rand(minimum: number, maximum: number): number } };
-	GROK_MOTION?: object;
-	GROK_PARTICLES?: object;
-	GROK_PRESETS?: {
+	OPET_GEOMETRY?: { create(dependencies: Record<string, unknown>): object };
+	OPET_MATH?: { create(random: () => number): { rand(minimum: number, maximum: number): number } };
+	OPET_MOTION?: object;
+	OPET_PARTICLES?: object;
+	OPET_PRESETS?: {
 		scenes: Record<string, VisualPreset>;
 		withDetails(preset: VisualPreset, details: Record<string, unknown>): unknown;
 	};
-	GROK_RENDER?: {
+	OPET_RENDER?: {
 		create(dependencies: Record<string, unknown>, options: Record<string, unknown>): unknown;
 	};
-	GROK_TABLES?: { create(data: unknown, actionGroups: unknown): object };
+	OPET_TABLES?: { create(data: unknown, actionGroups: unknown): object };
 	O_PET_ACTION_GROUPS?: unknown;
 	O_PET_RUNTIME?: {
 		create(dependencies: Record<string, unknown>, options: Record<string, unknown>): VisualCharacter;
@@ -145,7 +145,7 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 	factory: RendererFactory;
 	frame(time: number): void;
 	pendingFrames(): number;
-	presets: NonNullable<VisualWindowStub["GROK_PRESETS"]>;
+	presets: NonNullable<VisualWindowStub["OPET_PRESETS"]>;
 	setTime(time: number): void;
 	svg: SvgElementStub;
 } {
@@ -216,13 +216,13 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 
 	const runtime = windowStub.O_PET_RUNTIME;
 	const factory = windowStub.OPetRenderer;
-	const presets = windowStub.GROK_PRESETS;
-	const mathFactory = windowStub.GROK_MATH;
-	const geometryFactory = windowStub.GROK_GEOMETRY;
-	const effectsFactory = windowStub.GROK_EFFECTS;
-	const eyesFactory = windowStub.GROK_EYES;
-	const rendererFactory = windowStub.GROK_RENDER;
-	const tablesFactory = windowStub.GROK_TABLES;
+	const presets = windowStub.OPET_PRESETS;
+	const mathFactory = windowStub.OPET_MATH;
+	const geometryFactory = windowStub.OPET_GEOMETRY;
+	const effectsFactory = windowStub.OPET_EFFECTS;
+	const eyesFactory = windowStub.OPET_EYES;
+	const rendererFactory = windowStub.OPET_RENDER;
+	const tablesFactory = windowStub.OPET_TABLES;
 	if (
 		runtime === undefined
 		|| factory === undefined
@@ -238,17 +238,17 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 	}
 	const svg = new SvgElementStub("svg");
 	const math = mathFactory.create(deterministicMath.random);
-	const geometry = geometryFactory.create({ data: windowStub.GROK_GEO, math });
-	const tables = tablesFactory.create(windowStub.GROK_GEO, windowStub.O_PET_ACTION_GROUPS);
-	const effects = effectsFactory.create({ data: windowStub.GROK_GEO, math });
+	const geometry = geometryFactory.create({ data: windowStub.OPET_GEO, math });
+	const tables = tablesFactory.create(windowStub.OPET_GEO, windowStub.O_PET_ACTION_GROUPS);
+	const effects = effectsFactory.create({ data: windowStub.OPET_GEO, math });
 	const eyes = eyesFactory.create({ geometry, math }, deterministicMath.random);
 	const createRenderer = (): unknown => rendererFactory.create({
-		data: windowStub.GROK_GEO,
+		data: windowStub.OPET_GEO,
 		effects,
 		eyes,
 		geometry,
 		math,
-		particles: windowStub.GROK_PARTICLES,
+		particles: windowStub.OPET_PARTICLES,
 		tables,
 	}, {
 		document: documentStub,
@@ -258,16 +258,16 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 		svg,
 	});
 	const character = runtime.create({
-		actions: windowStub.GROK_ACTIONS,
-		choreography: windowStub.GROK_CHOREOGRAPHY,
-		data: windowStub.GROK_GEO,
+		actions: windowStub.OPET_ACTIONS,
+		choreography: windowStub.OPET_CHOREOGRAPHY,
+		data: windowStub.OPET_GEO,
 		effects,
-		expression: windowStub.GROK_EXPRESSION,
+		expression: windowStub.OPET_EXPRESSION,
 		eyes,
-		gaze: windowStub.GROK_GAZE,
+		gaze: windowStub.OPET_GAZE,
 		geometry,
 		math,
-		motion: windowStub.GROK_MOTION,
+		motion: windowStub.OPET_MOTION,
 		presets,
 		tables,
 		visualChannels: windowStub.O_PET_VISUAL_CHANNELS,
@@ -288,7 +288,7 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 	return {
 		character,
 		faceCenter(shape) {
-			const data = windowStub.GROK_GEO;
+			const data = windowStub.OPET_GEO;
 			const face = data?.shapes[shape]?.face;
 			if (data === undefined || face === undefined)
 				throw new Error(`缺少身形 ${shape}`);

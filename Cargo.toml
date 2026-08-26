@@ -29,6 +29,7 @@ csscolorparser = "*"
 directories = "*"
 interprocess = "*"
 png = "*"
+rust-embed = { version = "*", features = ["debug-embed"] }
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 toml = "*"

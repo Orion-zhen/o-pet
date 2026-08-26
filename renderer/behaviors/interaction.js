@@ -156,4 +156,4 @@
   }
 
   g.O_PET_INTERACTION = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

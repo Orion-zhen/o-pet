@@ -258,4 +258,4 @@
   }
 
   g.O_PET_ACTIVITIES = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

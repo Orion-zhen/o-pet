@@ -601,5 +601,5 @@
     });
   }
 
-  global.GROK_EFFECTS = Object.freeze({ create });
-})(window);
+  global.OPET_EFFECTS = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

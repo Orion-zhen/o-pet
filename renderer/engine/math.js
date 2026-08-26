@@ -1,4 +1,4 @@
-/* Grok 数值内核：标量、缓动、弹簧和姿态矩阵。 */
+/* OPet 数值内核：标量、缓动、弹簧和姿态矩阵。 */
 (function (g) {
   const spring = (x) => ({ x, v: 0, t: x });
   const stepSpring = (state, frequency, damping, dt) => {
@@ -122,5 +122,5 @@
     });
   }
 
-  g.GROK_MATH = Object.freeze({ ...core, create });
-})(window);
+  g.OPET_MATH = Object.freeze({ ...core, create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

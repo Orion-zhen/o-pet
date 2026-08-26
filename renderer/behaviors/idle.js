@@ -532,4 +532,4 @@
   }
 
   g.O_PET_IDLE = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

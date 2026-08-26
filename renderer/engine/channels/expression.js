@@ -188,5 +188,5 @@
     return Object.freeze({ sample });
   }
 
-  g.GROK_EXPRESSION = Object.freeze({ create });
-})(window);
+  g.OPET_EXPRESSION = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

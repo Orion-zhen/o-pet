@@ -452,5 +452,5 @@
     };
   }
 
-  global.GROK_PARTICLES = Object.freeze({ create: createParticles });
-})(window);
+  global.OPET_PARTICLES = Object.freeze({ create: createParticles });
+})(globalThis[Symbol.for("o-pet.renderer")]);

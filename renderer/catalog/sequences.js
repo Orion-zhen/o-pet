@@ -39,5 +39,5 @@
     return Object.freeze({ cues, fullWake, step, sequence });
   }
 
-  g.GROK_SEQUENCES = Object.freeze({ create });
-})(window);
+  g.OPET_SEQUENCES = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

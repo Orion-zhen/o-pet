@@ -59,5 +59,5 @@
     return Object.freeze({ sample });
   }
 
-  g.GROK_CHOREOGRAPHY = Object.freeze({ create });
-})(window);
+  g.OPET_CHOREOGRAPHY = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

@@ -337,5 +337,5 @@
     return createRenderer(options);
   }
 
-  g.GROK_RENDER = Object.freeze({ create });
-})(window);
+  g.OPET_RENDER = Object.freeze({ create });
+})(globalThis[Symbol.for("o-pet.renderer")]);

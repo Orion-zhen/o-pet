@@ -113,4 +113,4 @@
   }
 
   g.O_PET_POINTER = Object.freeze({ create });
-})(window);
+})(globalThis[Symbol.for("o-pet.renderer")]);

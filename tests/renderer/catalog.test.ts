@@ -27,10 +27,10 @@ function createChoreography(random: number): ChoreographyController {
 	deterministicMath.random = () => random;
 	vm.runInNewContext(mathSource, { Math: deterministicMath, window: windowStub });
 	vm.runInNewContext(choreographySource, { Math: deterministicMath, window: windowStub });
-	const math = (windowStub.GROK_MATH as {
+	const math = (windowStub.OPET_MATH as {
 		create(source: () => number): unknown;
 	}).create(deterministicMath.random);
-	return (windowStub.GROK_CHOREOGRAPHY as {
+	return (windowStub.OPET_CHOREOGRAPHY as {
 		create(dependencies: unknown): ChoreographyController;
 	}).create(math);
 }
@@ -51,16 +51,16 @@ describe("渲染器目录与控制通道", () => {
 		vm.runInNewContext(geometryEngineSource, windowStub);
 		vm.runInNewContext(actionGroupsSource, windowStub);
 		vm.runInNewContext(tablesSource, windowStub);
-		const geometry = windowStub.GROK_GEO as {
+		const geometry = windowStub.OPET_GEO as {
 			eyes: Array<Array<Array<[number, number]>>>;
 			palette: Record<string, unknown>;
 			shapes: Record<string, unknown>;
 		};
-		const math = (windowStub.GROK_MATH as { create(random: () => number): unknown }).create(() => 0.5);
-		const geometryEngine = (windowStub.GROK_GEOMETRY as {
+		const math = (windowStub.OPET_MATH as { create(random: () => number): unknown }).create(() => 0.5);
+		const geometryEngine = (windowStub.OPET_GEOMETRY as {
 			create(dependencies: Record<string, unknown>): { shapeModel(name: string): { ring: number[][] } };
 		}).create({ data: geometry, math });
-		const tables = (windowStub.GROK_TABLES as {
+		const tables = (windowStub.OPET_TABLES as {
 			create(data: unknown, actionGroups: unknown): {
 				BLINK_MS: Record<string, [number, number] | null>;
 				EYE_PLAYLIST: Record<string, number[]>;
@@ -110,7 +110,7 @@ describe("渲染器目录与控制通道", () => {
 		windowStub.window = windowStub;
 		vm.runInNewContext(presetsSource, windowStub);
 		vm.runInNewContext(sequencesSource, windowStub);
-		const presets = windowStub.GROK_PRESETS as {
+		const presets = windowStub.OPET_PRESETS as {
 			CHANNELS: string[];
 			fromState(state: string): VisualPreset;
 			replaceChannels(
@@ -121,7 +121,7 @@ describe("渲染器目录与控制通道", () => {
 			resolve(preset: VisualPreset): { choreography: string | null };
 			scenes: Record<string, VisualPreset>;
 		};
-		const sequences = (windowStub.GROK_SEQUENCES as {
+		const sequences = (windowStub.OPET_SEQUENCES as {
 			create(presets: unknown): { cues: Record<string, Array<{ preserveEffect?: boolean }>> };
 		}).create(presets);
 		const expectedChannels = [
@@ -236,16 +236,16 @@ describe("渲染器目录与控制通道", () => {
 				options: Record<string, unknown>,
 			): { faceRollDeg: number };
 		};
-		const mathModule = windowStub.GROK_MATH as { create(random: () => number): unknown };
-		const tables = (windowStub.GROK_TABLES as {
+		const mathModule = windowStub.OPET_MATH as { create(random: () => number): unknown };
+		const tables = (windowStub.OPET_TABLES as {
 			create(data: unknown, actionGroups: unknown): unknown;
-		}).create(windowStub.GROK_GEO, windowStub.O_PET_ACTION_GROUPS);
+		}).create(windowStub.OPET_GEO, windowStub.O_PET_ACTION_GROUPS);
 		const math = mathModule.create(deterministicMath.random);
-		const motion = (windowStub.GROK_MOTION as { create(math: unknown): MotionController }).create(math);
-		const expression = (windowStub.GROK_EXPRESSION as {
+		const motion = (windowStub.OPET_MOTION as { create(math: unknown): MotionController }).create(math);
+		const expression = (windowStub.OPET_EXPRESSION as {
 			create(math: unknown, tables: unknown): ExpressionController;
 		}).create(math, tables);
-		const gaze = (windowStub.GROK_GAZE as {
+		const gaze = (windowStub.OPET_GAZE as {
 			create(math: unknown): { next(state: string): { x: number; y: number } };
 		}).create(math);
 		const context = { quizzicalBlinked: false };
