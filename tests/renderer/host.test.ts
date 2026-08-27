@@ -475,6 +475,27 @@ describe("渲染器组合根行为", () => {
 		expect(document.body.classes.has("dragging")).toBe(false);
 	});
 
+	it("原生窗口拖动完成后会结束交互且不回传冗余结束消息", () => {
+		const { api, character, document, drags } = createHarness();
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 41, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 41,
+			clientX: 27,
+			clientY: 30,
+		});
+		expect(latest(character).pose).toBe("dragging");
+		expect(drags).toEqual([{ phase: "start" }]);
+
+		api.finishNativeDrag();
+
+		expect(latest(character).pose).toBe("spawning");
+		expect(document.body.classes.has("dragging")).toBe(false);
+		expect(drags).toEqual([{ phase: "start" }]);
+		document.body.dispatch("pointerup", { pointerId: 41 });
+		expect(drags).toEqual([{ phase: "start" }]);
+	});
+
 	it("短按播放轻触回应且不移动窗口", () => {
 		const { character, clock, document, drags } = createHarness();
 		clock.advance(2000);

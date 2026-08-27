@@ -149,6 +149,12 @@ function create(options) {
     options.onEnter();
   }
 
+  function finishNativeDrag() {
+    if (!pointer || pointer.kind !== "dragging") return;
+    clearPointer();
+    options.onEnd("dragging");
+  }
+
   function destroy() {
     if (disposed) return;
     disposed = true;
@@ -176,7 +182,7 @@ function create(options) {
   doc.body.addEventListener("pointercancel", cancel);
   doc.body.addEventListener("lostpointercapture", cancel);
 
-  return Object.freeze({ destroy });
+  return Object.freeze({ destroy, finishNativeDrag });
 }
 
 export { create };

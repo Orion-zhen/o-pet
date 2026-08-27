@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { start } from "../../renderer/start.js";
 
 describe("渲染页面组合根", () => {
-	it("页面组合根为渲染器注入浏览器随机源", () => {
+	it("页面组合根注入浏览器随机源并暴露原生拖动完成入口", () => {
 		let receivedRandom: unknown;
+		let nativeDragFinished = false;
 		const random = (): number => 0.25;
 		const document = {
 			addEventListener(): void {},
@@ -14,6 +15,9 @@ describe("渲染页面组合根", () => {
 		};
 		const renderer = {
 			destroy(): void {},
+			finishNativeDrag(): void {
+				nativeDragFinished = true;
+			},
 			setPreferences(): void {},
 			showAction(): void {},
 			update(): boolean {
@@ -37,5 +41,11 @@ describe("渲染页面组合根", () => {
 		});
 
 		expect(receivedRandom).toBe(random);
+		(
+			browserStub as typeof browserStub & {
+				oPet: { finishNativeDrag(): void };
+			}
+		).oPet.finishNativeDrag();
+		expect(nativeDragFinished).toBe(true);
 	});
 });

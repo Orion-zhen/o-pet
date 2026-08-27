@@ -392,6 +392,7 @@ function create(options, overrides = {}) {
 
   return Object.freeze({
     destroy,
+    finishNativeDrag: pointer.finishNativeDrag,
     setPreferences: preferences.set,
     showAction,
     update,

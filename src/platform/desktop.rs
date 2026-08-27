@@ -117,6 +117,7 @@ enum DragEvent {
     End,
 }
 
+#[cfg(any(test, target_os = "windows"))]
 #[derive(Default)]
 struct DragSession {
     active: bool,
@@ -124,6 +125,7 @@ struct DragSession {
     residual_y: f64,
 }
 
+#[cfg(any(test, target_os = "windows"))]
 impl DragSession {
     fn start(&mut self) {
         self.active = true;
@@ -144,8 +146,8 @@ impl DragSession {
         Some((whole_x, whole_y))
     }
 
-    fn end(&mut self) {
-        self.active = false;
+    fn end(&mut self) -> bool {
+        std::mem::replace(&mut self.active, false)
     }
 }
 
@@ -253,6 +255,7 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
     let mut preferences = config.renderer;
     let mut latest_update = AnimationUpdate::steady(Activity::Idle);
     let mut page_ready = false;
+    #[cfg(target_os = "windows")]
     let mut drag = DragSession::default();
     let mut server = server;
     let mut tray = None;
@@ -310,9 +313,32 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                     send_update(&webview, latest_update);
                 }
             }
+            #[cfg(target_os = "macos")]
+            Event::UserEvent(UserEvent::Page(PageMessage::Drag {
+                event: DragEvent::Start,
+            })) => {
+                let result = window.drag_window();
+                finish_native_drag(&webview);
+                match result {
+                    Ok(()) => update_and_save_placement(&window, target, &mut placement, &store),
+                    Err(error) => eprintln!("无法拖动 o-pet 窗口: {error}"),
+                }
+            }
+            #[cfg(target_os = "windows")]
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
                 event: DragEvent::Start,
             })) => drag.start(),
+            #[cfg(target_os = "macos")]
+            Event::UserEvent(UserEvent::Page(PageMessage::Drag {
+                event: DragEvent::Move { dx, dy },
+            })) => {
+                let _ = (dx, dy);
+            }
+            #[cfg(target_os = "macos")]
+            Event::UserEvent(UserEvent::Page(PageMessage::Drag {
+                event: DragEvent::End,
+            })) => {}
+            #[cfg(target_os = "windows")]
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
                 event: DragEvent::Move { dx, dy },
             })) => {
@@ -323,9 +349,14 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                     drag.end();
                 }
             }
+            #[cfg(target_os = "windows")]
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
                 event: DragEvent::End,
-            })) => drag.end(),
+            })) => {
+                if drag.end() {
+                    update_and_save_placement(&window, target, &mut placement, &store);
+                }
+            }
             Event::Reopen { .. } => window.set_visible(true),
             Event::WindowEvent {
                 window_id,
@@ -339,7 +370,9 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                 event: WindowEvent::Moved(_) | WindowEvent::Resized(_),
                 ..
             } if window_id == window.id() => {
-                update_and_save_placement(&window, target, &mut placement, &store);
+                if let Err(error) = update_placement(&window, target, &mut placement) {
+                    eprintln!("无法更新 o-pet 窗口位置: {error}");
+                }
             }
             Event::WindowEvent {
                 window_id,
@@ -493,6 +526,7 @@ fn reset_to_primary(
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
 fn move_window_by(window: &Window, dx: i32, dy: i32) -> Result<(), Box<dyn Error>> {
     let position = window.outer_position()?;
     window.set_outer_position(PhysicalPosition::new(
@@ -544,6 +578,13 @@ fn endpoint_error(endpoint: &std::path::Path, error: io::Error) -> io::Error {
         )
     } else {
         io::Error::new(error.kind(), format!("无法启动 o-pet IPC 服务: {error}"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn finish_native_drag(webview: &WebView) {
+    if let Err(error) = webview.evaluate_script("window.oPet.finishNativeDrag()") {
+        eprintln!("无法结束 o-pet 原生拖动状态: {error}");
     }
 }
 
@@ -650,6 +691,8 @@ mod tests {
                 assert_eq!(drag.delta(dx, dy, 2.0), None);
                 drag.start();
                 assert_eq!(drag.delta(dx, dy, 2.0), Some((13, -7)));
+                assert!(drag.end());
+                assert!(!drag.end());
                 drag.start();
                 assert_eq!(drag.delta(0.2, 0.2, 2.0), Some((0, 0)));
                 assert_eq!(drag.delta(0.2, 0.2, 2.0), Some((1, 1)));
