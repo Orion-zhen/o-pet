@@ -74,7 +74,7 @@
           const sh = geo.shapes[character.shapeName];
           const k = K2(clamp(character.shapeSpring.x, 0, 1));
           const to =
-            sh?.beltRadius || GEO.shapeModel(character.shapeName).beltRadius;
+            sh.beltRadius ?? GEO.shapeModel(character.shapeName).beltRadius;
           let je =
             k < 0.999 && character.prevBelt != null
               ? character.prevBelt + (to - character.prevBelt) * k
@@ -146,7 +146,7 @@
       const Jc = clamp(yl / FX.FORM_MORPH_THRESHOLD, 0, 1);
       const pencil =
         character.formKind === "pencil" || character.formPrev === "pencil";
-      const tear = geo.shapes.teardrop?.path;
+      const tear = geo.shapes.teardrop.path;
       const spinAmt = ex.turnRadians;
       const spinning = spinAmt != null;
       const restRing = morphing
@@ -232,7 +232,7 @@
       );
 
       const shrink = 1 - Dke(clamp((character.pxW - 44) / 90, 0, 1));
-      const pScale = character.pose.scale || 1;
+      const pScale = character.pose.scale;
       const zCur = cameraZoomFor(character.cameraKind, pScale);
       const zPrev = cameraZoomFor(character.cameraPrev, pScale);
       const zoom =
@@ -248,9 +248,7 @@
 
       const morphT = clamp(character.eyeMorph.x, 0, 1);
       const polys = character.eyePolys;
-      const cr = character.eyeTopology
-        ? relRot(character.pose, character.poseHome)
-        : null;
+      const cr = relRot(character.pose, character.poseHome);
       const overlayLive =
         yl > 0.001 ||
         Math.abs(character.formTurn.t - character.formTurn.x) > 0.01;
@@ -263,8 +261,7 @@
       const hasPtr =
         !steadyGaze &&
         !!(
-          character.gazeTarget ||
-          (character.followPointer && character.pointerRaw)
+          character.gazeTarget || character.pointerRaw
         );
       character.eyesG.setAttribute(
         "transform",
@@ -279,7 +276,6 @@
         shape,
         face,
         faceTune: character.faceTune,
-        uniformEyes: character.uniformEyes,
         eyeScaleProp: character.eyeScaleProp,
         blinkX: character.blink.x,
         eyeBoostX: character.eyeScale.x,
@@ -297,7 +293,6 @@
         badgeColor: character.badgeColor,
         Re: R,
         G9e: geo.G9e,
-        VJt: geo.VJt,
         extras: ex,
         eyeLids: character.eyeLids,
         frontBlend: character.frontBlend.x,
@@ -312,7 +307,6 @@
       if (hum > 0.01) {
         for (let i = 0; i < 2; i++) {
           const el = character.fx.parts[3 + i];
-          if (!el) continue;
           const Gn = character.effectSpinRadians * 0.85 + i * Math.PI;
           const Ti = shape.radius * 1.3;
           const Ui = Math.cos(Gn);
@@ -355,7 +349,6 @@
 
     function setBodyPaint(view, paint) {
       clearBodyPaint(view);
-      if (paint == null) return;
       if (paint.kind === "solid") {
         view.body.setAttribute("fill", paint.color);
         return;
@@ -414,7 +407,7 @@
 
       const glow = view.document.createElementNS(ns, "path");
       const bodyPath = view.body.getAttribute("d");
-      if (bodyPath !== null) glow.setAttribute("d", bodyPath);
+      glow.setAttribute("d", bodyPath);
       glow.setAttribute("fill", fill);
       glow.setAttribute("filter", `url(#${view.blurId})`);
       glow.setAttribute("pointer-events", "none");

@@ -235,9 +235,8 @@
   }
 
   function resolve(value) {
-    const preset = value?.preset ?? value;
-    if (!preset?.channels) return null;
-    const details = value?.preset ? value : null;
+    const details = value.preset ? value : null;
+    const preset = details ? details.preset : value;
     return Object.freeze({
       motion: preset.channels.motion.id,
       face: preset.channels.face.id,
@@ -256,7 +255,6 @@
   }
 
   g.OPET_PRESETS = Object.freeze({
-    CHANNELS,
     scenes,
     fromState,
     withDetails,

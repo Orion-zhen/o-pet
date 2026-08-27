@@ -151,7 +151,6 @@ impl PlacementStore {
     }
 
     pub fn save(&self, placement: &WindowPlacement) -> io::Result<()> {
-        placement.clone().validate()?;
         let parent = self.path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "o-pet 配置路径缺少父目录")
         })?;

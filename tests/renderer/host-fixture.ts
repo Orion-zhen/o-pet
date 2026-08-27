@@ -2,17 +2,12 @@ import vm from "node:vm";
 
 import { ClockStub, DocumentStub, EventTargetStub, MotionQueryStub } from "./browser-stubs.js";
 import {
-	actionGroupsSource, activitiesSource, cuesSource, hostSource, idleSource,
+	activitiesSource, cuesSource, hostSource, idleSource,
 	interactionSource, pointerSource, preferencesSource, presenterSource, presetsSource,
 	schedulerSource, sequencesSource, tablesSource, timelineSource,
 } from "./sources.js";
 
-interface CharacterOptions {
-	color: string;
-	followPointer: boolean;
-	shape: string;
-	state: string;
-}
+type CharacterOptions = object;
 
 interface CharacterScene {
 	pose: string;
@@ -27,29 +22,25 @@ interface CharacterScene {
 class CharacterStub {
 	readonly scenes: CharacterScene[];
 	readonly shapes: string[] = [];
-	readonly colors: Array<[string, string | undefined]> = [];
 	readonly bodyColors: unknown[] = [];
 	readonly eyeColors: string[] = [];
 	readonly paused: boolean[] = [];
 	readonly reducedMotion: boolean[] = [];
-	readonly followingPointer: boolean[] = [];
 	readonly playedStates: string[] = [];
-	colorId: string;
 	destroyed = false;
 	hopCount = 0;
 	pounceCount = 0;
 	spinCount = 0;
 	winkCount = 0;
 
-	constructor(_svg: unknown, options: CharacterOptions) {
+	constructor(_svg: unknown, _options: CharacterOptions) {
 		this.scenes = [{
-			pose: options.state,
-			expression: options.state,
-			effect: options.state,
-			gaze: options.state,
+			pose: "spawning",
+			expression: "spawning",
+			effect: "spawning",
+			gaze: "spawning",
 			shape: null,
 		}];
-		this.colorId = options.color;
 	}
 
 	setScene(scene: CharacterScene): void {
@@ -128,21 +119,12 @@ class CharacterStub {
 		this.shapes.push(shape);
 	}
 
-	setColor(color: string, scheme?: string): void {
-		this.colorId = color;
-		this.colors.push([color, scheme]);
-	}
-
 	setInk(paint: unknown): void {
 		this.bodyColors.push(paint);
 	}
 
 	setEyeColor(color: string): void {
 		this.eyeColors.push(color);
-	}
-
-	setFollowPointer(value: boolean): void {
-		this.followingPointer.push(value);
 	}
 
 	setReduceMotion(value: boolean): void {
@@ -165,9 +147,9 @@ interface RendererUpdate {
 
 interface RendererApi {
 	destroy(): void;
-	setPreferences(preferences: unknown): boolean;
-	showAction(name: string): boolean;
-	update(update: RendererUpdate): boolean;
+	setPreferences(preferences: unknown): void;
+	showAction(name: string): void;
+	update(update: RendererUpdate): void;
 }
 
 type DragMessage = { phase: "start" | "end" } | { phase: "move"; dx: number; dy: number };
@@ -232,7 +214,6 @@ export function createHarness(initiallyHidden = false, random = (): number => 0)
 		addEventListener: pointerTarget.addEventListener.bind(pointerTarget),
 		removeEventListener: pointerTarget.removeEventListener.bind(pointerTarget),
 		OPET_GEO: {
-			palette: { black: {}, blue: {} },
 			shapes: { blob: {}, cloud: {} },
 		},
 		OPET_GEOMETRY: { create: (): object => ({}) },
@@ -249,7 +230,6 @@ export function createHarness(initiallyHidden = false, random = (): number => 0)
 		},
 	};
 	windowStub.window = windowStub;
-	vm.runInNewContext(actionGroupsSource, windowStub);
 	vm.runInNewContext(tablesSource, windowStub);
 	vm.runInNewContext(presetsSource, windowStub);
 	vm.runInNewContext(sequencesSource, windowStub);

@@ -1,23 +1,5 @@
 /* o-pet 组合根。只协调行为优先级、外部事件和模块生命周期。 */
 (function (g) {
-  const ACTIVITIES = Object.freeze({
-    idle: true,
-    thinking: true,
-    searching: true,
-    coding: true,
-    terminal: true,
-    receiving: true,
-    consulting: true,
-    tooling: true,
-    replying: true,
-    awaiting_approval: true,
-  });
-  const CUES = g.O_PET_CUES.PRIORITY;
-  const ACTIONS = new Set(
-    g.O_PET_ACTION_GROUPS.flatMap((group) => group.states),
-  );
-  const hasOwn = (value, key) =>
-    Object.prototype.hasOwnProperty.call(value, key);
   const STARTUP_MS = 2000;
   const WAKING_MS = 1800;
   const ACTIVITY_SETTLE_MS = 350;
@@ -39,7 +21,7 @@
     });
     const now = scheduler.now;
     const presets = g.OPET_PRESETS;
-    const tables = g.OPET_TABLES.create(g.OPET_GEO, g.O_PET_ACTION_GROUPS);
+    const tables = g.OPET_TABLES.create();
     const scenes = presets.scenes;
     const sequences = g.OPET_SEQUENCES.create(presets);
     const math = g.OPET_MATH.create(random);
@@ -68,7 +50,6 @@
       },
       {
         clock: scheduler,
-        color: "black",
         createRenderer: () =>
           g.OPET_RENDER.create(
             {
@@ -88,11 +69,7 @@
               svg: options.svg,
             },
           ),
-        followPointer: true,
-        math,
         random,
-        shape: "blob",
-        state: "spawning",
       },
     );
     const presenter = g.O_PET_PRESENTER.create({
@@ -124,7 +101,6 @@
     });
     const preferences = g.O_PET_PREFERENCES.create({
       character,
-      geometry: g.OPET_GEO,
       motionQuery,
     });
 
@@ -219,18 +195,8 @@
     }
 
     function update(next) {
-      if (
-        destroyed ||
-        state.kind === "preview" ||
-        next === null ||
-        typeof next !== "object" ||
-        typeof next.activity !== "string" ||
-        !hasOwn(ACTIVITIES, next.activity)
-      )
-        return false;
+      if (destroyed) return;
       const cue = next.cue;
-      if (cue !== undefined && (typeof cue !== "string" || !hasOwn(CUES, cue)))
-        return false;
 
       const previousActivity = activity;
       const changed = next.activity !== activity;
@@ -255,30 +221,28 @@
       if (activity === "awaiting_approval" && cue === undefined) {
         interaction.cancel();
         enterActivity();
-        return true;
+        return;
       }
-      if (typeof cue === "string") {
+      if (cue !== undefined) {
         if (wakeBeforeActivity && activity !== "idle") {
           cues.request(cue, true);
           playWaking();
         } else {
           requestCue(cue);
         }
-        return true;
+        return;
       }
       if (
         state.kind === "startup" ||
         state.kind === "waking" ||
         state.kind === "cue"
       )
-        return true;
+        return;
       if (changed) scheduleActivitySwitch();
-      return true;
     }
 
     function showAction(name) {
-      if (destroyed || typeof name !== "string" || !ACTIONS.has(name))
-        return false;
+      if (destroyed) return;
       clearSwitch();
       stopDirector();
       cues.cancel();
@@ -294,7 +258,6 @@
         ],
         { loop: true },
       );
-      return true;
     }
 
     const interaction = g.O_PET_INTERACTION.create({

@@ -39,7 +39,7 @@
       last = -1;
     let parts = [];
     const burst = (W = 20, H = 1, G = 0) => {
-      if (reduce || !back || parts.length > 120) return;
+      if (reduce || parts.length > 120) return;
       const R = data.Re;
       for (let Y = 0; Y < W; Y++) {
         const U = (Y / W) * Math.PI * 2 + randomRange(-0.35, 0.35);
@@ -114,7 +114,7 @@
         rot: randomRange(0, 360),
         vr: randomRange(-240, 240),
         color: PALETTE[(random() * PALETTE.length) | 0],
-        hue: hue0 + (i * 360) / Math.max(beltN, 1) + randomRange(-14, 14),
+        hue: hue0 + (i * 360) / beltN + randomRange(-14, 14),
         hueSpan: randomRange(45, 95) * (random() < 0.5 ? 1 : -1),
         hueVel: randomRange(18, 42) * (random() < 0.5 ? 1 : -1),
         orbit: {
@@ -125,7 +125,7 @@
           rad:
             scale() * 116 +
             ((i / planes.length) | 0) *
-              (38 / Math.max(Math.ceil(beltN / planes.length) - 1, 1)) +
+              (38 / (Math.ceil(beltN / planes.length) - 1)) +
             randomRange(-1.5, 1.5),
           radVel: randomRange(0, 2.5),
           follow: randomRange(0.74, 0.94),
@@ -220,7 +220,7 @@
       }
     };
     const seedBelts = (now, emitTrails) => {
-      if (reduce || !back || !emitTrails) return;
+      if (reduce || !emitTrails) return;
       const H = Math.abs(spinVel);
       const live = parts.some((U) => U.orbit != null && U.ret < 1);
       if (
@@ -247,7 +247,7 @@
       }
     };
     const step = (dt, realDt) => {
-      if (!back || !parts.length) return;
+      if (!parts.length) return;
       const spinning = Math.abs(spinVel) >= THRESH;
       const keep = [];
       const R = data.Re;
@@ -317,7 +317,7 @@
               stroke: "none",
               fill: de.getAttribute("fill"),
             });
-            front?.appendChild(Ce);
+            front.appendChild(Ce);
             j.trailFrontEl = Ce;
           }
           const Ae = j.hist;
@@ -344,28 +344,26 @@
             const Je = X.toFixed(3);
             j.trailEl.setAttribute("d", Te);
             j.trailEl.setAttribute("opacity", Je);
-            j.trailFrontEl?.setAttribute("d", de);
-            j.trailFrontEl?.setAttribute("opacity", Je);
-            if (j.stops) {
-              const qe = (j.hue ?? 0) + (j.hueVel ?? 0) * j.life;
-              for (let we = 0; we < j.stops.length; we++) {
-                const Pe = we / (j.stops.length - 1),
-                  je = qe + Pe * (j.hueSpan ?? 120);
-                j.stops[we].setAttribute(
-                  "stop-color",
-                  `hsl(${(((je % 360) + 360) % 360).toFixed(0)} 56% ${(56 + 11 * Pe).toFixed(0)}%)`,
-                );
-              }
+            j.trailFrontEl.setAttribute("d", de);
+            j.trailFrontEl.setAttribute("opacity", Je);
+            const qe = j.hue + j.hueVel * j.life;
+            for (let we = 0; we < j.stops.length; we++) {
+              const Pe = we / (j.stops.length - 1),
+                je = qe + Pe * j.hueSpan;
+              j.stops[we].setAttribute(
+                "stop-color",
+                `hsl(${(((je % 360) + 360) % 360).toFixed(0)} 56% ${(56 + 11 * Pe).toFixed(0)}%)`,
+              );
             }
             const Ce = Ae[0],
               Ie = Ae[Ae.length - 1];
-            j.gradEl?.setAttribute("x1", Ce.x.toFixed(1));
-            j.gradEl?.setAttribute("y1", Ce.y.toFixed(1));
-            j.gradEl?.setAttribute("x2", Ie.x.toFixed(1));
-            j.gradEl?.setAttribute("y2", Ie.y.toFixed(1));
+            j.gradEl.setAttribute("x1", Ce.x.toFixed(1));
+            j.gradEl.setAttribute("y1", Ce.y.toFixed(1));
+            j.gradEl.setAttribute("x2", Ie.x.toFixed(1));
+            j.gradEl.setAttribute("y2", Ie.y.toFixed(1));
           } else {
             j.trailEl.setAttribute("opacity", "0");
-            j.trailFrontEl?.setAttribute("opacity", "0");
+            j.trailFrontEl.setAttribute("opacity", "0");
           }
           keep.push(j);
           continue;

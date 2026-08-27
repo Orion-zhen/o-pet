@@ -27,7 +27,7 @@
     const { sequences, timeline } = options;
     let current = null;
     let pending = null;
-    let onFinished = options.onFinished;
+    const onFinished = options.onFinished;
 
     const priority = (cue) => PRIORITY[cue];
 
@@ -37,7 +37,6 @@
 
     function play(cue) {
       const steps = sequences[cue];
-      if (!steps) return false;
       current = cue;
       timeline.play("cue", steps, {
         onComplete() {
@@ -51,35 +50,34 @@
           }
         },
       });
-      return true;
     }
 
     function request(cue, protectedMode = false) {
       if (protectedMode) {
         queue(cue);
-        return "queued";
+        return;
       }
       if (current !== null) {
         if (current === "reply_sent" && COMPLETION.has(cue)) {
           pending = cue;
-          return "queued";
+          return;
         }
         if (priority(cue) > priority(current)) {
           play(cue);
-          return "playing";
+          return;
         }
         queue(cue);
-        return "queued";
+        return;
       }
       play(cue);
-      return "playing";
     }
 
     function playPending() {
       if (pending === null) return false;
       const cue = pending;
       pending = null;
-      return play(cue);
+      play(cue);
+      return true;
     }
 
     function cancel(clearPending = true) {
@@ -91,15 +89,11 @@
     return Object.freeze({
       cancel,
       current: () => current,
-      hasPending: () => pending !== null,
       isCompletion: (cue) => COMPLETION.has(cue),
       playPending,
       request,
-      setOnFinished(callback) {
-        onFinished = callback;
-      },
     });
   }
 
-  g.O_PET_CUES = Object.freeze({ COMPLETION, PRIORITY, create });
+  g.O_PET_CUES = Object.freeze({ create });
 })(globalThis[Symbol.for("o-pet.renderer")]);

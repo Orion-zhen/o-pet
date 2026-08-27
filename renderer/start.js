@@ -19,6 +19,6 @@
     showAction: renderer.showAction,
     update: renderer.update,
   });
-  browser.oPetNative.ready?.();
+  browser.oPetNative.ready();
   browser.addEventListener("pagehide", renderer.destroy, { once: true });
 })(globalThis, globalThis[Symbol.for("o-pet.renderer")]);

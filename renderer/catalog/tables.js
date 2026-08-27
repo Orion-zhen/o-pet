@@ -1,8 +1,6 @@
 /* 眼形播放列表、眨眼节奏、弹簧参数和视图配置。 */
 (function (g) {
-  function create(data, actionGroups) {
-    const GROUPS = actionGroups;
-
+  function create() {
     const EYE_PLAYLIST = {
       sleeping: [13, 22, 4],
       dreaming: [13],
@@ -180,7 +178,6 @@
     };
     const POSE = { turn: 17, tilt: -14, roll: 29, scale: 1 };
     const POSE_HOME = { turn: 33, tilt: -19, roll: 38 };
-    const UNIFORM_EYES = true;
     const WINK_STATES = new Set([
       "idle",
       "happy",
@@ -223,88 +220,7 @@
     const cameraZoomFor = (kind, scale) =>
       kind == null ? 1 : Math.max(CAMERA_ZOOM[kind] / Math.max(scale, 1), 1);
 
-    // Source G_t / MNe / Y_t — login ink. Live $_t uses --fg = ink.flat ?? MNe(color).
-    const INK = {
-      black: {
-        lightFrom: "#585858",
-        lightTo: "#000000",
-        darkFrom: "#FFFFFF",
-        darkTo: "#C2C2C2",
-      },
-      brown: {
-        lightFrom: "#AE8968",
-        lightTo: "#855C36",
-        darkFrom: "#A27952",
-        darkTo: "#604227",
-      },
-      red: {
-        lightFrom: "#FF5667",
-        lightTo: "#E02135",
-        darkFrom: "#FF3E51",
-        darkTo: "#A21826",
-      },
-      orange: {
-        lightFrom: "#FF8838",
-        lightTo: "#E05B00",
-        darkFrom: "#FF781C",
-        darkTo: "#C24E00",
-      },
-      yellow: {
-        lightFrom: "#FFAF38",
-        lightTo: "#E08600",
-        darkFrom: "#FFA31C",
-        darkTo: "#C27400",
-      },
-      green: {
-        lightFrom: "#1CCF82",
-        lightTo: "#009957",
-        darkFrom: "#00C972",
-        darkTo: "#008048",
-      },
-      cyan: {
-        lightFrom: "#58D3C5",
-        lightTo: "#00A592",
-        darkFrom: "#1CC3B0",
-        darkTo: "#007769",
-      },
-      blue: {
-        lightFrom: "#459FFE",
-        lightTo: "#0E74E0",
-        darkFrom: "#2A92FE",
-        darkTo: "#0C64C1",
-      },
-      violet: {
-        lightFrom: "#B792FE",
-        lightTo: "#804EE0",
-        darkFrom: "#9159FE",
-        darkTo: "#5C39A1",
-      },
-      magenta: {
-        lightFrom: "#FF77BE",
-        lightTo: "#E02A88",
-        darkFrom: "#FF47A6",
-        darkTo: "#A21E62",
-      },
-      gray: {
-        lightFrom: "#A6A6A6",
-        lightTo: "#696969",
-        darkFrom: "#B7B7B7",
-        darkTo: "#777777",
-      },
-    };
-    const INK_ANGLE = 135;
-    const inkFg = (id) => {
-      const pal = data.palette[id] || data.palette.black;
-      return `light-dark(${pal.light}, ${pal.dark})`;
-    };
-    const inkCss = (id) => {
-      const e = INK[id] || INK.black;
-      return `linear-gradient(${INK_ANGLE + 90}deg, light-dark(${e.lightFrom}, ${e.darkFrom}), light-dark(${e.lightTo}, ${e.darkTo}))`;
-    };
-    const EYE_BG = "var(--sand-bg-base, var(--disk, #f3efe6))";
-
     return Object.freeze({
-      GROUPS,
       EYE_PLAYLIST,
       EYE_HOLD_MS,
       BLINK_MS,
@@ -313,23 +229,12 @@
       FACE_TUNE,
       POSE,
       POSE_HOME,
-      UNIFORM_EYES,
       WINK_STATES,
-      SHAPE_ZOOM,
-      VIEW_SCALE,
-      shapeZoom,
       poseScale,
       shapeEyeScale,
-      VIEW,
       VIEW_HALF,
       VIEW_MID,
-      CAMERA_ZOOM,
       cameraZoomFor,
-      INK,
-      INK_ANGLE,
-      inkFg,
-      inkCss,
-      EYE_BG,
     });
   }
 

@@ -36,7 +36,7 @@
         step(S.happy, 900),
       );
 
-    return Object.freeze({ cues, fullWake, step, sequence });
+    return Object.freeze({ cues, fullWake });
   }
 
   g.OPET_SEQUENCES = Object.freeze({ create });

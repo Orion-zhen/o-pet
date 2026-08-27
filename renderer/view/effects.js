@@ -137,7 +137,7 @@
     }
 
     class OverlayLayer {
-      constructor(options = {}) {
+      constructor(options) {
         const doc = options.document;
         const random = options.random;
         const make = (tag, attrs) => {
@@ -695,8 +695,8 @@
         const mixR = (tbl) => {
           if (!cur) return 19;
           return (
-            (tbl[cur] || 19) * mix +
-            (prev ? tbl[prev] || tbl[cur] : tbl[cur] || 19) * (1 - mix)
+            tbl[cur] * mix +
+            (prev ? tbl[prev] : tbl[cur]) * (1 - mix)
           );
         };
         const A2 = mixR(RADIUS);

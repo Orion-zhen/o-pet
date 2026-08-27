@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { EventTargetStub, SvgElementStub } from "./browser-stubs.js";
 import type { RendererFactory } from "./host-fixture.js";
 import {
-	actionGroupsSource, actionsSource, activitiesSource, choreographySource, cuesSource,
+	actionsSource, activitiesSource, choreographySource, cuesSource,
 	effectsSource, expressionSource, gazeSource, geometryEngineSource, geometrySource,
 	hostSource, idleSource, interactionSource, mathSource, motionSource, particlesSource,
 	pointerSource, preferencesSource, presenterSource, presetsSource, renderSource,
@@ -74,8 +74,7 @@ class VisualWindowStub extends EventTargetStub {
 	OPET_RENDER?: {
 		create(dependencies: Record<string, unknown>, options: Record<string, unknown>): unknown;
 	};
-	OPET_TABLES?: { create(data: unknown, actionGroups: unknown): object };
-	O_PET_ACTION_GROUPS?: unknown;
+	OPET_TABLES?: { create(): object };
 	O_PET_RUNTIME?: {
 		create(dependencies: Record<string, unknown>, options: Record<string, unknown>): VisualCharacter;
 	};
@@ -195,7 +194,6 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 		geometrySource,
 		mathSource,
 		geometryEngineSource,
-		actionGroupsSource,
 		tablesSource,
 		presetsSource,
 		sequencesSource,
@@ -247,7 +245,7 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 	const svg = new SvgElementStub("svg");
 	const math = mathFactory.create(deterministicMath.random);
 	const geometry = geometryFactory.create({ data: windowStub.OPET_GEO, math });
-	const tables = tablesFactory.create(windowStub.OPET_GEO, windowStub.O_PET_ACTION_GROUPS);
+	const tables = tablesFactory.create();
 	const effects = effectsFactory.create({
 		data: windowStub.OPET_GEO,
 		math,
@@ -289,13 +287,8 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 			now: (): number => now,
 			requestAnimationFrame,
 		},
-		color: "black",
 		createRenderer,
-		followPointer: false,
-		math,
 		random: deterministicMath.random,
-		shape: "blob",
-		state: "spawning",
 	});
 	return {
 		character,

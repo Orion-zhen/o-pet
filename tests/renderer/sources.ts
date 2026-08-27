@@ -5,8 +5,6 @@ function readModule(path: string): string {
 	return `globalThis[Symbol.for("o-pet.renderer")] = window;\n${source}`;
 }
 
-const actionGroupsJson = readFileSync(new URL("../../renderer/catalog/action-groups.json", import.meta.url), "utf8");
-export const actionGroupsSource = `window.O_PET_ACTION_GROUPS = ${actionGroupsJson};`;
 export const startSource = readModule("../../renderer/start.js");
 export const hostSource = readModule("../../renderer/host.js");
 export const particlesSource = readModule("../../renderer/view/particles.js");

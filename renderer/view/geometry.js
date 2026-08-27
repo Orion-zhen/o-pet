@@ -41,7 +41,7 @@
 
     function flattenPath(path, step = 4) {
       const tokens =
-        path.match(/[MLCQZmlcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) ?? [];
+        path.match(/[MLCQZmlcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g);
       const points = [];
       let index = 0;
       let command = "";
@@ -154,7 +154,7 @@
     // 身体极坐标轮廓沿用原渲染器的采样器；它与眼睛截面使用的完整 SVG 采样器是不同的视觉契约。
     function flattenRingPath(path, step = 4) {
       const tokens =
-        path.match(/[MLCQZmlcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) ?? [];
+        path.match(/[MLCQZmlcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g);
       const points = [];
       let index = 0;
       let command = "";
@@ -484,7 +484,6 @@
       let model = shapeModelCache.get(name);
       if (model) return model;
       const data = DATA.shapes[name];
-      if (!data) return null;
       const center = DATA.Re;
       const flattened = flattenPath(data.path);
       const ring = polarRing(flattenRingPath(data.path), center);
@@ -502,7 +501,7 @@
           beltRadius = Math.max(beltRadius, (right - left) / 2);
         }
       }
-      const solid = DATA.solids?.[name];
+      const solid = DATA.solids[name];
       model = Object.freeze({
         name,
         data,
@@ -518,7 +517,6 @@
 
     function shapeMetrics(name) {
       const model = shapeModel(name);
-      if (!model) return null;
       return {
         face: model.data.face,
         ring: model.ring,
@@ -573,27 +571,16 @@
     }
 
     return Object.freeze({
-      DEFAULT_RING_POINTS,
-      DEFAULT_SPAN_ROWS,
       polyPath,
       centroid,
       lerpPoly,
       lerpFace,
-      flattenPath,
-      flattenRingPath,
-      buildSpan,
       spanAt,
       spanPoly,
       closedSpline,
-      circleRing,
-      polarRing,
-      rotateRing,
       lerpRing,
-      spanHalf,
       capsule,
       taper,
-      solidRadii,
-      makeTurnAt,
       shapeModel,
       shapeMetrics,
       circlePathOf,

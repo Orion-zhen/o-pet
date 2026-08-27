@@ -535,14 +535,19 @@ fn is_internal_document_uri(uri: &str) -> bool {
     if uri == "about:blank" || uri.starts_with("about:blank#") {
         return true;
     }
-    [crate::renderer::DOCUMENT_URL, "http://o-pet.app/index.html"]
-        .iter()
-        .any(|document| {
-            uri == *document
-                || uri
-                    .strip_prefix(document)
-                    .is_some_and(|rest| rest.starts_with('#'))
-        })
+    let matches = |document| {
+        uri == document
+            || uri
+                .strip_prefix(document)
+                .is_some_and(|rest| rest.starts_with('#'))
+    };
+    if matches(crate::renderer::DOCUMENT_URL) {
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    return matches("http://o-pet.app/index.html");
+    #[cfg(target_os = "macos")]
+    false
 }
 
 #[cfg(test)]
@@ -560,10 +565,14 @@ mod tests {
             "about:blank#renderer",
             "o-pet://app/index.html",
             "o-pet://app/index.html#renderer",
-            "http://o-pet.app/index.html",
         ] {
             assert!(is_internal_document_uri(uri), "应允许 {uri}");
         }
+        #[cfg(target_os = "windows")]
+        assert!(is_internal_document_uri("http://o-pet.app/index.html"));
+        #[cfg(target_os = "macos")]
+        assert!(!is_internal_document_uri("http://o-pet.app/index.html"));
+
         for uri in [
             "https://example.com",
             "data:text/html,<html></html>",

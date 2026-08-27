@@ -7,16 +7,11 @@
         frequency * frequency * (state.x - state.t)) *
       dt;
     state.x += state.v * dt;
-    if (!Number.isFinite(state.x) || !Number.isFinite(state.v)) {
-      state.x = state.t;
-      state.v = 0;
-    }
   };
   const DT = 1 / 120;
   const springSteps = (dt) => Math.max(1, Math.ceil(dt / DT));
   const clamp = (number, minimum, maximum) =>
     Math.min(maximum, Math.max(minimum, number));
-  const lerp = (from, to, amount) => from + (to - from) * amount;
   const K2 = (amount) =>
     amount < 0.5
       ? 4 * amount * amount * amount
@@ -98,17 +93,13 @@
   const core = Object.freeze({
     spring,
     stepSpring,
-    DT,
     springSteps,
     clamp,
-    lerp,
     K2,
     Rc,
     y1e,
     Dke,
-    x_t,
     Rn,
-    rot3,
     relRot,
     mapPointer,
   });
@@ -122,5 +113,5 @@
     });
   }
 
-  g.OPET_MATH = Object.freeze({ ...core, create });
+  g.OPET_MATH = Object.freeze({ create });
 })(globalThis[Symbol.for("o-pet.renderer")]);

@@ -5,7 +5,7 @@ import { createHarness, latest } from "./host-fixture.js";
 describe("渲染器组合根行为", () => {
 	it("按名称循环预览动画预设并在轮次间暂停一秒", () => {
 		const { api, character, clock } = createHarness();
-		expect(api.showAction("happy")).toBe(true);
+		api.showAction("happy");
 		expect(latest(character).pose).toBe("happy");
 
 		clock.advance(2999);
@@ -18,12 +18,11 @@ describe("渲染器组合根行为", () => {
 		expect(character.paused.at(-1)).toBe(false);
 		expect(character.scenes.filter((scene) => scene.pose === "happy")).toHaveLength(2);
 		expect(character.playedStates).toEqual(["happy", "happy"]);
-		expect(api.update({ activity: "thinking" })).toBe(false);
 	});
 
 	it("front 预览组合正面注意姿态和锁定视线", () => {
 		const { api, character } = createHarness();
-		expect(api.showAction("front")).toBe(true);
+		api.showAction("front");
 		expect(latest(character)).toMatchObject({
 			pose: "listening",
 			expression: "front",
@@ -33,7 +32,7 @@ describe("渲染器组合根行为", () => {
 
 	it("thinking-alt 预览组合 cloud 身形和思考圆点", () => {
 		const { api, character } = createHarness();
-		expect(api.showAction("thinking-alt")).toBe(true);
+		api.showAction("thinking-alt");
 		expect(latest(character)).toMatchObject({
 			pose: "thinking-alt",
 			expression: "thinking",
@@ -60,13 +59,6 @@ describe("渲染器组合根行为", () => {
 		expect(character.playedStates).toEqual(["sleeping", "sleeping"]);
 	});
 
-	it("拒绝未知的动画预设", () => {
-		const { api, character } = createHarness();
-		const count = character.scenes.length;
-		expect(api.showAction("missing")).toBe(false);
-		expect(character.scenes).toHaveLength(count);
-	});
-
 	it.each([
 		["thinking", "thinking", null],
 		["searching", "searching", null],
@@ -77,7 +69,7 @@ describe("渲染器组合根行为", () => {
 		["replying", "listening", "dictating"],
 	] as const)("将 %s 活动组合为姿态和特效通道", (activity, pose, effect) => {
 		const { api, character, clock } = createHarness();
-		expect(api.update({ activity })).toBe(true);
+		api.update({ activity });
 		clock.advance(2000);
 		expect(latest(character)).toMatchObject({ pose, effect });
 	});
@@ -312,40 +304,18 @@ describe("渲染器组合根行为", () => {
 		expect(character.scenes.map((value) => value.pose)).not.toContain("waking");
 	});
 
-	it("应用受支持的身形、配色和动态偏好", () => {
+	it("应用原生配置和系统动态偏好", () => {
 		const { api, character, motion } = createHarness();
 		const bodyPaint = { kind: "solid", color: "#123456" };
-		expect(api.setPreferences({
+		api.setPreferences({
 			body_color: bodyPaint,
-			color: "blue",
 			eye_color: "#abcdef",
-			followPointer: false,
-			reduceMotion: true,
-			scheme: "dark",
 			shape: "cloud",
-		})).toBe(true);
+		});
 		expect(character.shapes).toEqual(["cloud"]);
-		expect(character.colors).toEqual([["blue", undefined], ["blue", "dark"]]);
 		expect(character.bodyColors).toEqual([bodyPaint]);
 		expect(character.eyeColors).toEqual(["#abcdef"]);
-		expect(character.followingPointer).toEqual([false]);
-		expect(character.reducedMotion.at(-1)).toBe(true);
 
-		api.setPreferences({
-			body_color: {
-				kind: "radial",
-				center: [0.5, 0.5],
-				accent: "#000000",
-				blur: 33,
-				stops: [
-					{ offset: 0, color: "#000000", opacity: 1 },
-					{ offset: 1, color: "#ffffff", opacity: 1 },
-				],
-			},
-		});
-		expect(character.bodyColors).toEqual([bodyPaint]);
-
-		api.setPreferences({ reduceMotion: false });
 		motion.matches = true;
 		motion.dispatch("change");
 		expect(character.reducedMotion.at(-1)).toBe(true);
@@ -599,6 +569,7 @@ describe("渲染器组合根行为", () => {
 		expect(motion.listeners.get("change")?.size).toBe(0);
 		expect(document.body.listeners.get("lostpointercapture")?.size).toBe(0);
 		expect(document.body.listeners.get("pointerenter")?.size).toBe(0);
-		expect(api.update({ activity: "thinking" })).toBe(false);
+		api.update({ activity: "thinking" });
+		expect(character.scenes).toHaveLength(1);
 	});
 });

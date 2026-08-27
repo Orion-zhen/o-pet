@@ -7,22 +7,20 @@
     let generation = 0;
 
     function cancel(owner) {
-      if (!active || (owner !== undefined && active.owner !== owner))
-        return false;
+      if (!active || (owner !== undefined && active.owner !== owner)) return;
       if (active.timer !== null) scheduler.clearTimeout(active.timer);
       active = null;
       generation += 1;
-      return true;
     }
 
-    function play(owner, steps, options = {}) {
-      if (disposed || !Array.isArray(steps) || steps.length === 0) return false;
+    function play(owner, steps, options) {
+      if (disposed) return;
       cancel();
       const token = ++generation;
       active = {
         index: 0,
         loop: options.loop === true,
-        onComplete: options.onComplete ?? null,
+        onComplete: options.onComplete,
         owner,
         steps,
         timer: null,
@@ -47,7 +45,6 @@
       };
 
       advance();
-      return true;
     }
 
     function destroy() {

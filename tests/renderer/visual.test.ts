@@ -554,7 +554,7 @@ describe("渲染器视觉运行时", () => {
 			viewportWidth: () => 1,
 		});
 		clock.advance(2000);
-		expect(api.update({ activity: "coding" })).toBe(true);
+		api.update({ activity: "coding" });
 		clock.advance(350);
 		expect(svg.children.length).toBeGreaterThan(0);
 		api.destroy();

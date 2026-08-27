@@ -163,8 +163,6 @@
     }
 
     return Object.freeze({
-      HOP_SEGMENTS,
-      HOP_DURATION,
       sampleHop,
       startTrick,
       sampleTrick: evalTrick,

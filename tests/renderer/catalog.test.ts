@@ -3,7 +3,7 @@ import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 import {
-	actionGroupsSource, choreographySource, expressionSource, gazeSource, geometryEngineSource,
+	choreographySource, expressionSource, gazeSource, geometryEngineSource,
 	geometrySource, mathSource, motionSource, presetsSource, sequencesSource, tablesSource,
 } from "./sources.js";
 
@@ -43,18 +43,16 @@ const freshChoreographyContext = (): Record<string, unknown> => ({
 });
 
 describe("渲染器目录与控制通道", () => {
-	it("内嵌全部眼睛、身形和配色数据", () => {
+	it("内嵌全部眼睛和身形数据", () => {
 		const windowStub: Record<string, unknown> = {};
 		windowStub.window = windowStub;
 		vm.runInNewContext(geometrySource, windowStub);
 		vm.runInNewContext(mathSource, windowStub);
 		vm.runInNewContext(geometryEngineSource, windowStub);
-		vm.runInNewContext(actionGroupsSource, windowStub);
 		vm.runInNewContext(tablesSource, windowStub);
 		const geometry = windowStub.OPET_GEO as {
 			Re: number;
 			eyes: Array<Array<Array<[number, number]>>>;
-			palette: Record<string, unknown>;
 			shapes: Record<string, unknown>;
 		};
 		const math = (windowStub.OPET_MATH as { create(random: () => number): unknown }).create(() => 0.5);
@@ -73,19 +71,11 @@ describe("渲染器目录与控制通道", () => {
 			};
 		}).create({ data: geometry, math });
 		const tables = (windowStub.OPET_TABLES as {
-			create(data: unknown, actionGroups: unknown): {
+			create(): {
 				BLINK_MS: Record<string, [number, number] | null>;
 				EYE_PLAYLIST: Record<string, number[]>;
-				GROUPS: Array<{ states: string[] }>;
 			};
-		}).create(geometry, windowStub.O_PET_ACTION_GROUPS);
-
-		const states = tables.GROUPS.flatMap((group) => group.states);
-		expect(states).toHaveLength(45);
-		expect(states).toEqual(expect.arrayContaining([
-			"startled", "stretching", "dreaming", "quizzical", "front", "thinking-alt",
-		]));
-		expect(states).not.toContain("progress");
+		}).create();
 		expect(tables.EYE_PLAYLIST.winking).toEqual([1]);
 		expect(tables.EYE_PLAYLIST.front).toEqual([25, 26]);
 		expect(tables.BLINK_MS.winking).toBeNull();
@@ -104,9 +94,6 @@ describe("渲染器目录与控制通道", () => {
 		expect(Object.keys(geometry.shapes)).toEqual([
 			"blob", "pebble", "bean", "egg", "squircle", "tablet", "capsule", "cylinder", "hex",
 			"gem", "crystal", "wedge", "shield", "dome", "arch", "cloud", "teardrop", "leaf",
-		]);
-		expect(Object.keys(geometry.palette)).toEqual([
-			"black", "brown", "red", "orange", "yellow", "green", "cyan", "blue", "violet", "magenta", "gray",
 		]);
 		const sampleRing: Array<[number, number]> = [Math.PI / 6, -Math.PI / 6]
 			.map((angle) => [
@@ -152,7 +139,6 @@ describe("渲染器目录与控制通道", () => {
 		vm.runInNewContext(presetsSource, windowStub);
 		vm.runInNewContext(sequencesSource, windowStub);
 		const presets = windowStub.OPET_PRESETS as {
-			CHANNELS: string[];
 			fromState(state: string): VisualPreset;
 			replaceChannels(
 				base: VisualPreset,
@@ -171,7 +157,6 @@ describe("渲染器目录与控制通道", () => {
 			"motion", "face", "expression", "gaze", "shape", "form",
 			"decoration", "particles", "camera", "badge",
 		];
-		expect(presets.CHANNELS).toEqual(expectedChannels);
 		for (const preset of Object.values(presets.scenes)) {
 			expect(Object.keys(preset.channels)).toEqual(expectedChannels);
 		}
@@ -268,7 +253,6 @@ describe("渲染器目录与控制通道", () => {
 		const deterministicMath = Object.create(Math) as Math;
 		deterministicMath.random = () => 0.5;
 		vm.runInNewContext(mathSource, { Math: deterministicMath, window: windowStub });
-		vm.runInNewContext(actionGroupsSource, { Math: deterministicMath, window: windowStub });
 		vm.runInNewContext(tablesSource, { Math: deterministicMath, window: windowStub });
 		vm.runInNewContext(motionSource, { Math: deterministicMath, window: windowStub });
 		vm.runInNewContext(expressionSource, { Math: deterministicMath, window: windowStub });
@@ -295,8 +279,8 @@ describe("渲染器目录与控制通道", () => {
 		};
 		const mathModule = windowStub.OPET_MATH as { create(random: () => number): unknown };
 		const tables = (windowStub.OPET_TABLES as {
-			create(data: unknown, actionGroups: unknown): unknown;
-		}).create(windowStub.OPET_GEO, windowStub.O_PET_ACTION_GROUPS);
+			create(): unknown;
+		}).create();
 		const math = mathModule.create(deterministicMath.random);
 		const motion = (windowStub.OPET_MOTION as {
 			create(math: unknown, tables: unknown): MotionController;

@@ -20,9 +20,7 @@
     let current = null;
 
     function contactDirection(clientX) {
-      const measured = viewportWidth();
-      const width = typeof measured === "number" && measured > 0 ? measured : 1;
-      return clientX < width / 2 ? 1 : -1;
+      return clientX < viewportWidth() / 2 ? 1 : -1;
     }
 
     function finishFullWake() {

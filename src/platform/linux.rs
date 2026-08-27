@@ -328,9 +328,10 @@ fn build_window(
 
     let web_context = WebContext::new();
     web_context.register_uri_scheme(crate::renderer::PROTOCOL, respond_renderer_asset);
-    if let Some(security_manager) = web_context.security_manager() {
-        security_manager.register_uri_scheme_as_secure(crate::renderer::PROTOCOL);
-    }
+    web_context
+        .security_manager()
+        .expect("WebContext 必须提供 SecurityManager")
+        .register_uri_scheme_as_secure(crate::renderer::PROTOCOL);
 
     let content_manager = UserContentManager::new();
     assert!(

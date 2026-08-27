@@ -6,15 +6,6 @@ Object.defineProperty(globalThis, MODULE_SCOPE, {
 });
 
 try {
-  const response = await fetch("./catalog/action-groups.json");
-  if (!response.ok) throw new Error(`无法加载动作目录: HTTP ${response.status}`);
-  const actionGroups = await response.json();
-  modules.O_PET_ACTION_GROUPS = Object.freeze(
-    actionGroups.map((group) =>
-      Object.freeze({ ...group, states: Object.freeze(group.states) }),
-    ),
-  );
-
   for (const source of [
     "./view/geometry-data.js",
     "./engine/math.js",

@@ -114,7 +114,7 @@
       if (want && effects.CYCLE.has(want)) {
         if (
           !state.formRest &&
-          now - state.formOverlayAt > (effects.CYCLE_ON[want] || 2500)
+          now - state.formOverlayAt > effects.CYCLE_ON[want]
         ) {
           state.formRest = true;
           state.formRestAt = now;

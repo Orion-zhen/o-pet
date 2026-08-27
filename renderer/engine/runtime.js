@@ -24,13 +24,9 @@
       FACE_TUNE,
       POSE,
       POSE_HOME,
-      UNIFORM_EYES,
       WINK_STATES,
       poseScale,
       shapeEyeScale,
-      inkFg,
-      inkCss,
-      EYE_BG,
     } = T;
 
     const resetSpring = (value, target) => {
@@ -54,7 +50,7 @@
         this.clock = opts.clock;
         this.destroyed = false;
         this.random = opts.random;
-        this.math = opts.math;
+        this.math = M;
         this.rand = this.math.rand;
         this.sign = this.math.sign;
         this.motionController = MOTION.create(this.math, T);
@@ -63,12 +59,10 @@
         this.choreographyController = CHOREOGRAPHY.create(this.math);
         this.actionController = ACTIONS.create(this.math);
         this.eyeController = EY;
-        this.preferredShapeName = opts.shape || "blob";
+        this.preferredShapeName = "blob";
         this.shapeName = this.preferredShapeName;
         this.sceneShapeName = null;
-        this.colorId = opts.color || "black";
-        this.scheme = opts.scheme || "light";
-        this.state = opts.state || "idle";
+        this.state = "spawning";
         this.motionState = null;
         this.expressionState = null;
         this.faceState = null;
@@ -79,28 +73,14 @@
         this.faceRoll = 0;
         this.eyeLids = null;
         this.bodyDeformation = null;
-        this.loginWrap = opts.loginWrap !== false;
-        this.eyeTopology = opts.eyeTopology ?? this.loginWrap;
-        this.faceTune = opts.faceTune ?? (this.loginWrap ? FACE_TUNE : null);
-        this.pose = {
-          ...(this.loginWrap ? POSE : { turn: 0, tilt: 0, roll: 0, scale: 1 }),
-          ...opts.pose,
-        };
-        this.poseHome =
-          opts.poseHome ||
-          (this.loginWrap ? POSE_HOME : { turn: 0, tilt: 0, roll: 0 });
-        this.uniformEyes =
-          opts.uniformEyes ?? (this.loginWrap ? UNIFORM_EYES : false);
-        this.eyeScaleProp =
-          opts.eyeScale ?? (this.loginWrap ? shapeEyeScale(this.shapeName) : 1);
-        this.followPointer = !!opts.followPointer;
-        this.gazeTarget = opts.gazeTarget || null;
-        this.paused = !!opts.paused;
-        this.reduceMotion = opts.reduceMotion === true;
-        this.badgeColor = opts.badgeColor || "var(--gb-badge, #1d9bf0)";
-        this.sizePx = opts.sizePx || null;
-        this.eyeColor = opts.eyeColor || null;
-        this.bodyPaint = opts.bodyPaint || null;
+        this.faceTune = FACE_TUNE;
+        this.pose = { ...POSE };
+        this.poseHome = POSE_HOME;
+        this.eyeScaleProp = shapeEyeScale(this.shapeName);
+        this.gazeTarget = null;
+        this.paused = false;
+        this.reduceMotion = false;
+        this.badgeColor = "var(--gb-badge, #1d9bf0)";
 
         this.spin = spring(0);
         this.tx = spring(0);
@@ -112,9 +92,9 @@
         this.gazeX = spring(0);
         this.gazeY = spring(0);
         this.eyeMorph = spring(1);
-        this.frontBlend = spring(this.state === "front" ? 1 : 0);
+        this.frontBlend = spring(0);
         this.shapeSpring = spring(1);
-        this.shapeScaleFrom = this.pose.scale || 1;
+        this.shapeScaleFrom = this.pose.scale;
         this.shapeScaleTo = this.shapeScaleFrom;
 
         this.eyeFrom = 0;
@@ -164,7 +144,15 @@
           renderer: this.renderer,
           springs: SPRINGS,
         });
-        this.setColor(this.colorId, this.scheme);
+        this.renderer.setStyle("--fg", "light-dark(#000000, #FFFFFF)");
+        this.renderer.setStyle(
+          "--ink",
+          "linear-gradient(225deg, light-dark(#585858, #FFFFFF), light-dark(#000000, #C2C2C2))",
+        );
+        this.renderer.setStyle(
+          "--bg",
+          "var(--sand-bg-base, var(--disk, #f3efe6))",
+        );
         this._applyPoseScale();
         this.setPreset(PRESETS.fromState(this.state), { resetEyes: true });
         this._render(this.t0);
@@ -240,24 +228,15 @@
         this.renderer.setReduceMotion(this.reduceMotion);
       }
 
-      setFollowPointer(v) {
-        this.followPointer = !!v;
-        if (!v) {
-          this.pointerRaw = null;
-          this.gazeTarget = null;
-        }
-      }
-
       setGazeTarget(pt) {
         this.gazeTarget = pt;
       }
 
       setPointerPosition(pt) {
-        this.pointerRaw = this.followPointer ? pt : null;
+        this.pointerRaw = pt;
       }
 
       setShape(name) {
-        if (!DATA.shapes[name]) throw new Error(`未知角色形状: ${name}`);
         if (name === this.preferredShapeName) return;
         this.preferredShapeName = name;
         if (this.sceneShapeName === null) this._transitionShape(name, true);
@@ -286,55 +265,31 @@
         this.shapeSpring.x = 0;
         this.shapeSpring.v = 0;
         this.shapeSpring.t = 1;
-        if (this.loginWrap) this.eyeScaleProp = shapeEyeScale(name);
+        this.eyeScaleProp = shapeEyeScale(name);
         this._applyPoseScale();
         if (playTrick) this._cycleShapeTrick();
       }
 
-      setColor(id, scheme) {
-        this.colorId = id;
-        if (scheme) this.scheme = scheme;
-        if (this.bodyPaint) {
-          this.renderer.setStyle(
-            "--fg",
-            this.bodyPaint.kind === "solid"
-              ? this.bodyPaint.color
-              : this.bodyPaint.accent,
-          );
-        } else if (this.loginWrap) {
-          this.renderer.setStyle("--fg", inkFg(id));
-        } else {
-          const pal = DATA.palette[id] || DATA.palette.black;
-          this.renderer.setStyle(
-            "--fg",
-            this.scheme === "dark" ? pal.dark : pal.light,
-          );
-        }
-        this.renderer.setBodyPaint(this.bodyPaint);
-        this.renderer.setStyle("--ink", inkCss(id));
-        this.renderer.setStyle("--bg", this.eyeColor || EYE_BG);
-      }
-
       setInk(paint) {
-        this.bodyPaint = paint;
-        this.setColor(this.colorId);
+        this.renderer.setStyle(
+          "--fg",
+          paint.kind === "solid" ? paint.color : paint.accent,
+        );
+        this.renderer.setBodyPaint(paint);
       }
 
       setEyeColor(color) {
-        this.eyeColor = color || null;
-        this.renderer.setStyle("--bg", this.eyeColor || EYE_BG);
+        this.renderer.setStyle("--bg", color);
       }
 
       playPreset(preset) {
         const scene = PRESETS.resolve(preset);
-        if (!scene) throw new Error("无效动画预设");
         this._resetPlaybackRuntime();
         this._applyComposition(scene, { resetEyes: true, restart: true });
       }
 
       setPreset(preset, { resetEyes = false } = {}) {
         const scene = PRESETS.resolve(preset);
-        if (!scene) throw new Error("无效动画预设");
         this._applyComposition(scene, { resetEyes });
       }
 
@@ -361,20 +316,14 @@
       }
 
       _applyComposition(scene, { resetEyes = false, restart = false } = {}) {
-        const motion = scene.motion ?? this.motionState ?? this.state;
-        const expression = scene.expression ?? this.expressionState ?? motion;
-        const face = scene.face ?? this.faceState ?? motion;
-        const gaze = scene.gaze ?? this.gazeState ?? expression;
-        const sceneShape = typeof scene.shape === "string" ? scene.shape : null;
-        const choreography =
-          typeof scene.choreography === "string" ? scene.choreography : null;
-        const direction =
-          scene.direction === -1 || scene.direction === 1 ? scene.direction : 0;
-        const variant =
-          typeof scene.variant === "string" ? scene.variant : null;
-        if (!EYE_PLAYLIST[expression])
-          throw new Error(`未知表情通道: ${expression}`);
-
+        const motion = scene.motion;
+        const expression = scene.expression;
+        const face = scene.face;
+        const gaze = scene.gaze;
+        const sceneShape = scene.shape;
+        const choreography = scene.choreography;
+        const direction = scene.direction ?? 0;
+        const variant = scene.variant ?? null;
         const motionChanged = motion !== this.motionState;
         const expressionChanged = expression !== this.expressionState;
         const faceChanged = face !== this.faceState;
@@ -497,15 +446,9 @@
         this.squash.v += 2.5 * strength;
       }
       _applyPoseScale() {
-        const scale = this.loginWrap
-          ? poseScale(this.shapeName)
-          : this.pose.scale || 1;
+        const scale = poseScale(this.shapeName);
         this.pose.scale = scale;
         this.shapeScaleTo = scale;
-        if (this.sizePx) {
-          this.renderer.setViewportStyle("width", `${this.sizePx}px`);
-          this.renderer.setViewportStyle("height", `${this.sizePx}px`);
-        }
       }
 
       _applyViewportScale() {
@@ -581,7 +524,7 @@
           this.gazeState === "front" || this.gazeState === "sleeping";
         const src = lockFront
           ? null
-          : this.gazeTarget || (this.followPointer ? this.pointerRaw : null);
+          : this.gazeTarget || this.pointerRaw;
         if (src) {
           if (now - this.rectAt > 200) {
             this.rectCache = this.renderer.bounds();
@@ -628,10 +571,8 @@
           eyePolys: this._currentPolys(morphT),
           eyeScale: this.eyeScale,
           eyeScaleProp: this.eyeScaleProp,
-          eyeTopology: this.eyeTopology,
           faceRoll: this.faceRoll,
           faceTune: this.faceTune,
-          followPointer: this.followPointer,
           frontBlend: this.frontBlend,
           gazeState: this.gazeState,
           gazeTarget: this.gazeTarget,
@@ -655,7 +596,6 @@
           squash: this.squash,
           tx: this.tx,
           ty: this.ty,
-          uniformEyes: this.uniformEyes,
           winkAt: this.winkAt,
           winkEye: this.winkEye,
         });

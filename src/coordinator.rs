@@ -137,7 +137,7 @@ pub enum AgentEvent {
 }
 
 #[derive(Debug, Default)]
-pub struct Coordinator {
+pub(crate) struct Coordinator {
     clients: HashMap<u64, ClientState>,
     receive_order: u64,
 }
@@ -213,7 +213,7 @@ impl ClientState {
                     activity,
                 });
                 if is_new {
-                    self.tool_count = self.tool_count.saturating_add(1);
+                    self.tool_count += 1;
                 }
                 self.activity = self.current_work();
                 None
@@ -235,8 +235,8 @@ impl ClientState {
                 if self.denied_tools.remove(&tool_call_id) {
                     None
                 } else if outcome == ToolOutcome::Error {
-                    self.tool_errors = self.tool_errors.saturating_add(1);
-                    self.error_streak = self.error_streak.saturating_add(1);
+                    self.tool_errors += 1;
+                    self.error_streak += 1;
                     Some(error_cue(self.error_streak))
                 } else {
                     self.error_streak = 0;
@@ -301,15 +301,22 @@ impl ClientState {
 }
 
 impl Coordinator {
-    pub fn connect(&mut self, connection_id: u64) {
+    pub(crate) fn connect(&mut self, connection_id: u64) {
         self.clients.insert(connection_id, ClientState::default());
     }
 
-    pub fn event(&mut self, connection_id: u64, event: AgentEvent) -> Option<AnimationUpdate> {
+    pub(crate) fn event(
+        &mut self,
+        connection_id: u64,
+        event: AgentEvent,
+    ) -> Option<AnimationUpdate> {
         let previous = self.current_selection();
-        let client = self.clients.get_mut(&connection_id)?;
+        let client = self
+            .clients
+            .get_mut(&connection_id)
+            .expect("事件连接必须已注册");
         let cue = client.apply(event);
-        self.receive_order = self.receive_order.saturating_add(1);
+        self.receive_order += 1;
         client.last_active = Some(self.receive_order);
         let current = self.current_selection();
         let activity = current.map_or(Activity::Idle, |(_, activity)| activity);
@@ -323,14 +330,16 @@ impl Coordinator {
         })
     }
 
-    pub fn disconnect(&mut self, connection_id: u64) -> Option<AnimationUpdate> {
+    pub(crate) fn disconnect(&mut self, connection_id: u64) -> Option<AnimationUpdate> {
         let previous = self.current_activity();
-        self.clients.remove(&connection_id)?;
+        self.clients
+            .remove(&connection_id)
+            .expect("断开的连接必须已注册");
         let current = self.current_activity();
         (current != previous).then_some(AnimationUpdate::steady(current))
     }
 
-    pub fn current_activity(&self) -> Activity {
+    fn current_activity(&self) -> Activity {
         self.current_selection()
             .map_or(Activity::Idle, |(_, activity)| activity)
     }

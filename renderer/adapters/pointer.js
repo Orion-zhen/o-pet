@@ -109,7 +109,7 @@
     doc.body.addEventListener("pointercancel", finish);
     doc.body.addEventListener("lostpointercapture", finish);
 
-    return Object.freeze({ destroy, isActive: () => pointer !== null });
+    return Object.freeze({ destroy });
   }
 
   g.O_PET_POINTER = Object.freeze({ create });

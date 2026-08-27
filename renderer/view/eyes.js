@@ -40,7 +40,6 @@
         shape,
         face,
         faceTune,
-        uniformEyes,
         eyeScaleProp,
         blinkX,
         gazeX,
@@ -57,7 +56,6 @@
         badgeColor,
         Re,
         G9e,
-        VJt,
         extras,
         ringHint,
       } = opt;
@@ -67,58 +65,54 @@
       const $i = {
         x: face.x,
         y: face.y,
-        sx: face.sx * (faceTune?.gap ?? 1),
-        sy: face.sy * (faceTune?.height ?? 1),
-        eye: face.eye * (faceTune?.size ?? 1),
+        sx: face.sx * faceTune.gap,
+        sy: face.sy * faceTune.height,
+        eye: face.eye * faceTune.size,
         leftDX: face.leftDX ?? 0,
       };
-      const sX = uniformEyes ? $i.leftDX * freeBlend : 0;
+      const sX = $i.leftDX * freeBlend;
       const cents = [centroid(polys[0]), centroid(polys[1])];
       let a1 = 0,
         o1 = 0;
       for (const p of polys[0]) a1 = Math.max(a1, Math.abs(p[0] - cents[0][0]));
       for (const p of polys[1]) o1 = Math.max(o1, Math.abs(p[0] - cents[1][0]));
       const l1 = Math.abs(cents[1][0] - (cents[0][0] + sX)) * $i.sx;
-      const pre = uniformEyes ? 0 : VJt;
-      const _ee = a1 + o1 > 0.5 ? clamp((l1 - pre) / (a1 + o1), 0.35, 4) : 4;
-      const baseEyeScale = uniformEyes ? 1 : $i.eye;
+      const _ee = a1 + o1 > 0.5 ? clamp(l1 / (a1 + o1), 0.35, 4) : 4;
       const Uee =
-        (baseEyeScale + ($i.eye - baseEyeScale) * frontBlend) *
+        (1 + ($i.eye - 1) * frontBlend) *
         clamp(eyeScaleProp, 0.25, 4);
       const oX = Math.min(clamp(opt.eyeBoostX, 0.2, 2) * Uee, _ee / pulse);
       const Hee = Math.min(
-        oX * clamp(faceTune?.eyeWidth ?? 1, 0.2, 3),
+        oX * clamp(faceTune.eyeWidth, 0.2, 3),
         _ee / pulse,
       );
-      const u1 = oX * clamp(faceTune?.eyeHeight ?? 1, 0.2, 3);
+      const u1 = oX * clamp(faceTune.eyeHeight, 0.2, 3);
       const liveSpan = ringHint
         ? (y) => spanPoly(ringHint, y, Re)
         : spanAt(shape.path, Re);
-      const top = opt.top ?? shape.top;
-      const bottom = opt.bottom ?? shape.bottom;
-      const Vn = opt.emphasisBlend || 0;
+      const top = opt.top;
+      const bottom = opt.bottom;
+      const Vn = 0;
       const midX = (cents[0][0] + cents[1][0]) / 2;
       const midY = (cents[0][1] + cents[1][1]) / 2;
       const pullX = (Re - midX) * 0.42 * Vn;
       const pullY = (Re - midY) * 0.42 * Vn;
       const gazeW = pointer ? 0.2 : 1;
-      const badgeRing = opt.badgeRing || ringHint;
-      const Yl = badgeRing
-        ? badgeRing[Math.round((badgeRing.length * 7) / 8) % badgeRing.length]
-        : [Re, shape.top];
-      const faceRotation = cr
-        ? [
-            cr[0] + (1 - cr[0]) * frontBlend,
-            cr[1] * freeBlend,
-            cr[2] * freeBlend,
-            cr[3] * freeBlend,
-            cr[4] + (1 - cr[4]) * frontBlend,
-            cr[5] * freeBlend,
-            cr[6] * freeBlend,
-            cr[7] * freeBlend,
-            cr[8] + (1 - cr[8]) * frontBlend,
-          ]
-        : null;
+      const badgeRing = opt.badgeRing;
+      const Yl = badgeRing[
+        Math.round((badgeRing.length * 7) / 8) % badgeRing.length
+      ];
+      const faceRotation = [
+        cr[0] + (1 - cr[0]) * frontBlend,
+        cr[1] * freeBlend,
+        cr[2] * freeBlend,
+        cr[3] * freeBlend,
+        cr[4] + (1 - cr[4]) * frontBlend,
+        cr[5] * freeBlend,
+        cr[6] * freeBlend,
+        cr[7] * freeBlend,
+        cr[8] + (1 - cr[8]) * frontBlend,
+      ];
 
       for (let i = 0; i < 2; i++) {
         const poly = polys[i];
@@ -139,9 +133,9 @@
           Tre = 1;
         let Sre = clamp(Re + $i.y + (Ti - Re) * $i.sy, top + 2, bottom - 2);
         const surfaceTurn = turn == null ? null : turn * freeBlend;
-        const use3d = faceRotation !== null && frontBlend < 1;
+        const use3d = frontBlend < 1;
 
-        if (faceRotation && use3d) {
+        if (use3d) {
           const xr = (Ea - Re) / Re;
           const Fr = (Re - Ti) / Re;
           const Ia = Math.sqrt(Math.max(0, 1 - xr * xr - Fr * Fr)) || 0.02;
@@ -235,8 +229,8 @@
           Kj += pullX * ambientBlend;
           Ko += pullY * ambientBlend;
         }
-        Kj += gazeX * gazeW + (extras.gazeXPx || 0);
-        Ko += gazeY * gazeW + (extras.gazeYPx || 0);
+        Kj += gazeX * gazeW + extras.gazeXPx;
+        Ko += gazeY * gazeW + extras.gazeYPx;
         const $ee = clamp(notifyX, 0, 1);
         Kj -= 10 * $ee;
         Ko += 7 * $ee;
@@ -302,16 +296,14 @@
         }
       }
 
-      if (badgeEl) {
-        const amt = clamp(notifyX, 0, 1.4);
-        if (amt <= 0.01) badgeEl.style.display = "none";
-        else {
-          badgeEl.style.display = "";
-          badgeEl.style.fill = badgeColor || "var(--gb-badge, #1d9bf0)";
-          badgeEl.setAttribute("cx", Yl[0].toFixed(1));
-          badgeEl.setAttribute("cy", Yl[1].toFixed(1));
-          badgeEl.setAttribute("r", (20 * amt).toFixed(2));
-        }
+      const amt = clamp(notifyX, 0, 1.4);
+      if (amt <= 0.01) badgeEl.style.display = "none";
+      else {
+        badgeEl.style.display = "";
+        badgeEl.style.fill = badgeColor;
+        badgeEl.setAttribute("cx", Yl[0].toFixed(1));
+        badgeEl.setAttribute("cy", Yl[1].toFixed(1));
+        badgeEl.setAttribute("r", (20 * amt).toFixed(2));
       }
     }
 
