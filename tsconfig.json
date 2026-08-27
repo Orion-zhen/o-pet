@@ -1,6 +1,8 @@
 {
 	"compilerOptions": {
 		"target": "ES2022",
+		"allowJs": true,
+		"checkJs": false,
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"strict": true,
@@ -11,5 +13,5 @@
 		"skipLibCheck": true,
 		"types": ["node", "vitest"]
 	},
-	"include": ["tests/**/*.ts"]
+	"include": ["renderer/**/*", "tests/**/*.ts"]
 }

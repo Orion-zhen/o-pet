@@ -1,138 +1,152 @@
+// @ts-check
 /* 统一动画时钟。页面暂停时同时冻结定时器、动画帧和动画时间。 */
-(function (g) {
-  function create(options) {
-    const timerClock = options.timerClock;
-    const frameClock = options.frameClock;
-    const rawNow = options.now;
-    const timers = new Map();
-    const frames = new Map();
-    const pauseReasons = new Set();
-    let nextId = 1;
-    let pausedAt = null;
-    let pausedDuration = 0;
-    let disposed = false;
+/**
+ * @param {{ timerClock: import("../types.js").TimerClock, frameClock: import("../types.js").FrameClock, now: () => number }} options
+ * @returns {import("../types.js").Scheduler}
+ */
+function create(options) {
+  const timerClock = options.timerClock;
+  const frameClock = options.frameClock;
+  const rawNow = options.now;
+  /** @type {Map<number, { id: number, callback: () => void, due: number, nativeHandle: unknown | null }>} */
+  const timers = new Map();
+  /** @type {Map<number, { id: number, callback: (time: number) => void, nativeHandle: unknown | null }>} */
+  const frames = new Map();
+  const pauseReasons = new Set();
+  let nextId = 1;
+  /** @type {number | null} */
+  let pausedAt = null;
+  let pausedDuration = 0;
+  let disposed = false;
 
-    const now = () => {
-      const raw = rawNow();
-      return raw - pausedDuration - (pausedAt === null ? 0 : raw - pausedAt);
-    };
+  const now = () => {
+    const raw = rawNow();
+    return raw - pausedDuration - (pausedAt === null ? 0 : raw - pausedAt);
+  };
 
-    function armTimer(timer) {
-      if (disposed || pauseReasons.size > 0 || timer.nativeHandle !== null)
-        return;
-      timer.nativeHandle = timerClock.setTimeout(
-        () => {
-          timer.nativeHandle = null;
-          if (!timers.delete(timer.id) || disposed) return;
-          timer.callback();
-        },
-        Math.max(0, timer.due - now()),
-      );
-    }
-
-    function setTimer(callback, delay) {
-      if (disposed) return null;
-      const timer = {
-        id: nextId++,
-        callback,
-        due: now() + Math.max(0, delay),
-        nativeHandle: null,
-      };
-      timers.set(timer.id, timer);
-      armTimer(timer);
-      return timer.id;
-    }
-
-    function clearTimer(id) {
-      if (id === null) return;
-      const timer = timers.get(id);
-      if (!timer) return;
-      if (timer.nativeHandle !== null)
-        timerClock.clearTimeout(timer.nativeHandle);
-      timers.delete(id);
-    }
-
-    function armFrame(frame) {
-      if (disposed || pauseReasons.size > 0 || frame.nativeHandle !== null)
-        return;
-      frame.nativeHandle = frameClock.requestAnimationFrame(() => {
-        frame.nativeHandle = null;
-        if (!frames.delete(frame.id) || disposed) return;
-        frame.callback(now());
-      });
-    }
-
-    function requestFrame(callback) {
-      if (disposed) return null;
-      const frame = { id: nextId++, callback, nativeHandle: null };
-      frames.set(frame.id, frame);
-      armFrame(frame);
-      return frame.id;
-    }
-
-    function cancelFrame(id) {
-      if (id === null) return;
-      const frame = frames.get(id);
-      if (!frame) return;
-      if (frame.nativeHandle !== null)
-        frameClock.cancelAnimationFrame(frame.nativeHandle);
-      frames.delete(id);
-    }
-
-    function pause(reason) {
-      if (disposed || pauseReasons.has(reason)) return;
-      const wasRunning = pauseReasons.size === 0;
-      pauseReasons.add(reason);
-      if (!wasRunning) return;
-      pausedAt = rawNow();
-      for (const timer of timers.values()) {
-        if (timer.nativeHandle !== null)
-          timerClock.clearTimeout(timer.nativeHandle);
+  /** @param {{ id: number, callback: () => void, due: number, nativeHandle: unknown | null }} timer */
+  function armTimer(timer) {
+    if (disposed || pauseReasons.size > 0 || timer.nativeHandle !== null)
+      return;
+    timer.nativeHandle = timerClock.setTimeout(
+      () => {
         timer.nativeHandle = null;
-      }
-      for (const frame of frames.values()) {
-        if (frame.nativeHandle !== null)
-          frameClock.cancelAnimationFrame(frame.nativeHandle);
-        frame.nativeHandle = null;
-      }
-    }
+        if (!timers.delete(timer.id) || disposed) return;
+        timer.callback();
+      },
+      Math.max(0, timer.due - now()),
+    );
+  }
 
-    function resume(reason) {
-      if (disposed || !pauseReasons.delete(reason) || pauseReasons.size > 0)
-        return;
-      if (pausedAt !== null) pausedDuration += rawNow() - pausedAt;
-      pausedAt = null;
-      for (const timer of timers.values()) armTimer(timer);
-      for (const frame of frames.values()) armFrame(frame);
-    }
+  /** @param {() => void} callback @param {number} delay */
+  function setTimer(callback, delay) {
+    if (disposed) return null;
+    const timer = {
+      id: nextId++,
+      callback,
+      due: now() + Math.max(0, delay),
+      nativeHandle: null,
+    };
+    timers.set(timer.id, timer);
+    armTimer(timer);
+    return timer.id;
+  }
 
-    function destroy() {
-      if (disposed) return;
-      disposed = true;
-      for (const timer of timers.values()) {
-        if (timer.nativeHandle !== null)
-          timerClock.clearTimeout(timer.nativeHandle);
-      }
-      for (const frame of frames.values()) {
-        if (frame.nativeHandle !== null)
-          frameClock.cancelAnimationFrame(frame.nativeHandle);
-      }
-      timers.clear();
-      frames.clear();
-      pauseReasons.clear();
-    }
+  /** @param {number | null} id */
+  function clearTimer(id) {
+    if (id === null) return;
+    const timer = timers.get(id);
+    if (!timer) return;
+    if (timer.nativeHandle !== null)
+      timerClock.clearTimeout(timer.nativeHandle);
+    timers.delete(id);
+  }
 
-    return Object.freeze({
-      cancelAnimationFrame: cancelFrame,
-      clearTimeout: clearTimer,
-      destroy,
-      now,
-      pause,
-      requestAnimationFrame: requestFrame,
-      resume,
-      setTimeout: setTimer,
+  /** @param {{ id: number, callback: (time: number) => void, nativeHandle: unknown | null }} frame */
+  function armFrame(frame) {
+    if (disposed || pauseReasons.size > 0 || frame.nativeHandle !== null)
+      return;
+    frame.nativeHandle = frameClock.requestAnimationFrame(() => {
+      frame.nativeHandle = null;
+      if (!frames.delete(frame.id) || disposed) return;
+      frame.callback(now());
     });
   }
 
-  g.O_PET_SCHEDULER = Object.freeze({ create });
-})(globalThis[Symbol.for("o-pet.renderer")]);
+  /** @param {(time: number) => void} callback */
+  function requestFrame(callback) {
+    if (disposed) return null;
+    const frame = { id: nextId++, callback, nativeHandle: null };
+    frames.set(frame.id, frame);
+    armFrame(frame);
+    return frame.id;
+  }
+
+  /** @param {number | null} id */
+  function cancelFrame(id) {
+    if (id === null) return;
+    const frame = frames.get(id);
+    if (!frame) return;
+    if (frame.nativeHandle !== null)
+      frameClock.cancelAnimationFrame(frame.nativeHandle);
+    frames.delete(id);
+  }
+
+  /** @param {string} reason */
+  function pause(reason) {
+    if (disposed || pauseReasons.has(reason)) return;
+    const wasRunning = pauseReasons.size === 0;
+    pauseReasons.add(reason);
+    if (!wasRunning) return;
+    pausedAt = rawNow();
+    for (const timer of timers.values()) {
+      if (timer.nativeHandle !== null)
+        timerClock.clearTimeout(timer.nativeHandle);
+      timer.nativeHandle = null;
+    }
+    for (const frame of frames.values()) {
+      if (frame.nativeHandle !== null)
+        frameClock.cancelAnimationFrame(frame.nativeHandle);
+      frame.nativeHandle = null;
+    }
+  }
+
+  /** @param {string} reason */
+  function resume(reason) {
+    if (disposed || !pauseReasons.delete(reason) || pauseReasons.size > 0)
+      return;
+    if (pausedAt !== null) pausedDuration += rawNow() - pausedAt;
+    pausedAt = null;
+    for (const timer of timers.values()) armTimer(timer);
+    for (const frame of frames.values()) armFrame(frame);
+  }
+
+  function destroy() {
+    if (disposed) return;
+    disposed = true;
+    for (const timer of timers.values()) {
+      if (timer.nativeHandle !== null)
+        timerClock.clearTimeout(timer.nativeHandle);
+    }
+    for (const frame of frames.values()) {
+      if (frame.nativeHandle !== null)
+        frameClock.cancelAnimationFrame(frame.nativeHandle);
+    }
+    timers.clear();
+    frames.clear();
+    pauseReasons.clear();
+  }
+
+  return Object.freeze({
+    cancelAnimationFrame: cancelFrame,
+    clearTimeout: clearTimer,
+    destroy,
+    now,
+    pause,
+    requestAnimationFrame: requestFrame,
+    resume,
+    setTimeout: setTimer,
+  });
+}
+
+export { create };

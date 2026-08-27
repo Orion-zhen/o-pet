@@ -1,7 +1,6 @@
-import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
-import { startSource } from "./sources.js";
+import { start } from "../../renderer/start.js";
 
 describe("渲染页面组合根", () => {
 	it("页面组合根为渲染器注入浏览器随机源", () => {
@@ -9,7 +8,7 @@ describe("渲染页面组合根", () => {
 		const random = (): number => 0.25;
 		const document = {
 			addEventListener(): void {},
-			getElementById(): object {
+			querySelector(): object {
 				return {};
 			},
 		};
@@ -17,17 +16,11 @@ describe("渲染页面组合根", () => {
 			destroy(): void {},
 			setPreferences(): void {},
 			showAction(): void {},
-			update(): void {},
+			update(): boolean {
+				return true;
+			},
 		};
-		const modules = {
-			OPetRenderer: Object.freeze({
-				create(options: { random: unknown }): typeof renderer {
-					receivedRandom = options.random;
-					return renderer;
-				},
-			}),
-		};
-		const browserStub: Record<string, unknown> = {
+		const browserStub = {
 			addEventListener(): void {},
 			document,
 			innerWidth: 240,
@@ -35,9 +28,13 @@ describe("渲染页面组合根", () => {
 			Math: { random },
 			oPetNative: { postDrag(): void {}, ready(): void {} },
 			performance: { now: (): number => 0 },
-			window: modules,
 		};
-		vm.runInNewContext(startSource, browserStub);
+
+		// @ts-expect-error 页面替身只实现启动函数实际使用的浏览器接口。
+		start(browserStub, (options: { random: unknown }) => {
+			receivedRandom = options.random;
+			return renderer;
+		});
 
 		expect(receivedRandom).toBe(random);
 	});

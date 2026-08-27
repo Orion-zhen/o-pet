@@ -1,22 +1,29 @@
 import { createHash } from "node:crypto";
-import vm from "node:vm";
 
+import * as presetsModule from "../../renderer/catalog/presets.js";
+import * as actions from "../../renderer/engine/actions.js";
+import * as choreography from "../../renderer/engine/channels/choreography.js";
+import * as expression from "../../renderer/engine/channels/expression.js";
+import * as gaze from "../../renderer/engine/channels/gaze.js";
+import * as motion from "../../renderer/engine/channels/motion.js";
+import * as frame from "../../renderer/engine/frame.js";
+import { create as createMath } from "../../renderer/engine/math.js";
+import * as pointerTracker from "../../renderer/engine/pointer-tracker.js";
+import { create as createRuntime } from "../../renderer/engine/runtime.js";
+import * as visualChannels from "../../renderer/engine/visual-channels.js";
+import { create as createTables } from "../../renderer/catalog/tables.js";
+import { create as createHost } from "../../renderer/host.js";
+import { create as createEffects } from "../../renderer/view/effects.js";
+import { create as createEyes } from "../../renderer/view/eyes.js";
+import geometryData from "../../renderer/view/geometry-data.js";
+import { create as createGeometry } from "../../renderer/view/geometry.js";
+import * as particles from "../../renderer/view/particles.js";
+import { create as createSvgRenderer } from "../../renderer/view/svg.js";
+import type { FrameModel, PresetCatalog, RendererPort } from "../../renderer/types.js";
 import { EventTargetStub, SvgElementStub } from "./browser-stubs.js";
 import type { RendererFactory } from "./host-fixture.js";
-import {
-	actionsSource, activitiesSource, choreographySource, cuesSource,
-	effectsSource, expressionSource, gazeSource, geometryEngineSource, geometrySource,
-	hostSource, idleSource, interactionSource, mathSource, motionSource, particlesSource,
-	pointerSource, preferencesSource, presenterSource, presetsSource, renderSource,
-	runtimeSource, schedulerSource, sequencesSource, tablesSource, timelineSource,
-	visualChannelsSource, eyesSource,
-} from "./sources.js";
 
 type AnimationFrameCallback = (time: number) => void;
-
-interface VisualPreset {
-	channels: Record<string, { id: string | null }>;
-}
 
 interface VisualCharacter {
 	readonly celebrateAt: number | null;
@@ -46,39 +53,8 @@ interface VisualCharacter {
 	spinOnce(turns?: number, direction?: number): void;
 	hopOnce(): void;
 	pounceOnce(direction?: number, strength?: number): void;
+	renderOnce(): void;
 	destroy(): void;
-}
-
-class VisualWindowStub extends EventTargetStub {
-	OPetRenderer?: RendererFactory;
-	OPET_ACTIONS?: object;
-	OPET_CHOREOGRAPHY?: object;
-	OPET_EFFECTS?: { create(dependencies: Record<string, unknown>): object };
-	OPET_EXPRESSION?: object;
-	OPET_EYES?: {
-		create(dependencies: Record<string, unknown>, random: () => number): object;
-	};
-	OPET_GAZE?: object;
-	OPET_GEO?: {
-		Re: number;
-		shapes: Record<string, { face: { x: number; y: number } }>;
-	};
-	OPET_GEOMETRY?: { create(dependencies: Record<string, unknown>): object };
-	OPET_MATH?: { create(random: () => number): { rand(minimum: number, maximum: number): number } };
-	OPET_MOTION?: object;
-	OPET_PARTICLES?: object;
-	OPET_PRESETS?: {
-		scenes: Record<string, VisualPreset>;
-		withDetails(preset: VisualPreset, details: Record<string, unknown>): unknown;
-	};
-	OPET_RENDER?: {
-		create(dependencies: Record<string, unknown>, options: Record<string, unknown>): unknown;
-	};
-	OPET_TABLES?: { create(): object };
-	O_PET_RUNTIME?: {
-		create(dependencies: Record<string, unknown>, options: Record<string, unknown>): VisualCharacter;
-	};
-	O_PET_VISUAL_CHANNELS?: object;
 }
 
 function serializeSvg(element: SvgElementStub): unknown {
@@ -151,8 +127,9 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 	faceCenter(shape: string): { x: number; y: number };
 	factory: RendererFactory;
 	frame(time: number): void;
+	latestFrame(): Readonly<FrameModel>;
 	pendingFrames(): number;
-	presets: NonNullable<VisualWindowStub["OPET_PRESETS"]>;
+	presets: PresetCatalog;
 	setTime(time: number): void;
 	svg: SvgElementStub;
 } {
@@ -164,123 +141,69 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 		createElementNS: (_namespace: string, tag: string): SvgElementStub => new SvgElementStub(tag),
 		documentElement,
 	};
-	const deterministicMath = Object.create(Math) as Math;
-	deterministicMath.random = random;
-	const windowStub = new VisualWindowStub();
 	const requestAnimationFrame = (callback: AnimationFrameCallback): number => {
 		const id = nextFrameId++;
 		frames.set(id, callback);
 		return id;
 	};
 	const cancelAnimationFrame = (id: number): void => void frames.delete(id);
-	const context = {
-		cancelAnimationFrame,
-		document: documentStub,
-		matchMedia: () => ({ matches: false }),
-		Math: deterministicMath,
-		performance: { now: (): number => now },
-		requestAnimationFrame,
-		window: windowStub,
+	const factory: RendererFactory = {
+		create(options) {
+			// @ts-expect-error 浏览器替身只实现渲染器实际使用的宿主接口。
+			return createHost(options);
+		},
 	};
-	Object.assign(windowStub, {
-		cancelAnimationFrame,
-		document: documentStub,
-		matchMedia: context.matchMedia,
-		performance: context.performance,
-		requestAnimationFrame,
-		window: windowStub,
-	});
-	for (const source of [
-		geometrySource,
-		mathSource,
-		geometryEngineSource,
-		tablesSource,
-		presetsSource,
-		sequencesSource,
-		motionSource,
-		expressionSource,
-		gazeSource,
-		choreographySource,
-		actionsSource,
-		particlesSource,
-		effectsSource,
-		eyesSource,
-		renderSource,
-		visualChannelsSource,
-		runtimeSource,
-		schedulerSource,
-		timelineSource,
-		presenterSource,
-		activitiesSource,
-		idleSource,
-		cuesSource,
-		interactionSource,
-		pointerSource,
-		preferencesSource,
-		hostSource,
-	]) vm.runInNewContext(source, context);
-
-	const runtime = windowStub.O_PET_RUNTIME;
-	const factory = windowStub.OPetRenderer;
-	const presets = windowStub.OPET_PRESETS;
-	const mathFactory = windowStub.OPET_MATH;
-	const geometryFactory = windowStub.OPET_GEOMETRY;
-	const effectsFactory = windowStub.OPET_EFFECTS;
-	const eyesFactory = windowStub.OPET_EYES;
-	const rendererFactory = windowStub.OPET_RENDER;
-	const tablesFactory = windowStub.OPET_TABLES;
-	if (
-		runtime === undefined
-		|| factory === undefined
-		|| presets === undefined
-		|| mathFactory === undefined
-		|| geometryFactory === undefined
-		|| effectsFactory === undefined
-		|| eyesFactory === undefined
-		|| rendererFactory === undefined
-		|| tablesFactory === undefined
-	) {
-		throw new Error("完整动画引擎未加载");
-	}
+	const presets: PresetCatalog = presetsModule;
 	const svg = new SvgElementStub("svg");
-	const math = mathFactory.create(deterministicMath.random);
-	const geometry = geometryFactory.create({ data: windowStub.OPET_GEO, math });
-	const tables = tablesFactory.create();
-	const effects = effectsFactory.create({
-		data: windowStub.OPET_GEO,
-		math,
-		tables,
-	});
-	const eyes = eyesFactory.create({ geometry, math }, deterministicMath.random);
-	const createRenderer = (): unknown => rendererFactory.create({
-		data: windowStub.OPET_GEO,
+	const math = createMath(random);
+	const geometry = createGeometry({ data: geometryData, math });
+	const tables = createTables();
+	const effects = createEffects({ data: geometryData, math, tables });
+	const eyes = createEyes({ geometry, math }, random);
+	let renderedFrame: Readonly<FrameModel> | null = null;
+	const createRenderer = (): RendererPort => {
+		const rendererOptions = {
+			document: documentStub,
+			initialShape: "blob",
+			rand: math.rand,
+			random,
+			svg,
+		};
+		const rendererDependencies = {
+			data: geometryData,
+			effects,
+			eyes,
+			geometry,
+			math,
+			particles,
+			tables,
+		};
+		// @ts-expect-error SVG 替身只实现视图实际使用的 DOM 接口。
+		const renderer = createSvgRenderer(rendererDependencies, rendererOptions);
+		return {
+			...renderer,
+			render(frameModel: Readonly<FrameModel>): void {
+				renderedFrame = frameModel;
+				renderer.render(frameModel);
+			},
+		};
+	};
+	const character: VisualCharacter = createRuntime({
+		actions,
+		choreography,
+		data: geometryData,
 		effects,
+		expression,
+		frame,
 		eyes,
+		gaze,
 		geometry,
 		math,
-		particles: windowStub.OPET_PARTICLES,
-		tables,
-	}, {
-		document: documentStub,
-		initialShape: "blob",
-		rand: math.rand,
-		random: deterministicMath.random,
-		svg,
-	});
-	const character = runtime.create({
-		actions: windowStub.OPET_ACTIONS,
-		choreography: windowStub.OPET_CHOREOGRAPHY,
-		data: windowStub.OPET_GEO,
-		effects,
-		expression: windowStub.OPET_EXPRESSION,
-		eyes,
-		gaze: windowStub.OPET_GAZE,
-		geometry,
-		math,
-		motion: windowStub.OPET_MOTION,
+		motion,
 		presets,
+		pointerTracker,
 		tables,
-		visualChannels: windowStub.O_PET_VISUAL_CHANNELS,
+		visualChannels,
 	}, {
 		clock: {
 			cancelAnimationFrame,
@@ -288,16 +211,14 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 			requestAnimationFrame,
 		},
 		createRenderer,
-		random: deterministicMath.random,
+		random,
 	});
 	return {
 		character,
 		faceCenter(shape) {
-			const data = windowStub.OPET_GEO;
-			const face = data?.shapes[shape]?.face;
-			if (data === undefined || face === undefined)
-				throw new Error(`缺少身形 ${shape}`);
-			return { x: data.Re + face.x, y: data.Re + face.y };
+			const face = geometryData.shapes[shape]?.face;
+			if (face === undefined) throw new Error(`缺少身形 ${shape}`);
+			return { x: geometryData.Re + face.x, y: geometryData.Re + face.y };
 		},
 		factory,
 		frame(time) {
@@ -305,6 +226,10 @@ export function createVisualHarness(random: () => number = () => 0.5): {
 			const callbacks = [...frames.values()];
 			frames.clear();
 			for (const callback of callbacks) callback(time);
+		},
+		latestFrame() {
+			if (renderedFrame === null) throw new Error("角色尚未提交帧模型");
+			return renderedFrame;
 		},
 		pendingFrames: () => frames.size,
 		presets,

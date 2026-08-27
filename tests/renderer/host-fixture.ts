@@ -1,11 +1,7 @@
-import vm from "node:vm";
+import { create as createRenderer } from "../../renderer/host.js";
+import type { DragMessage, RendererApi } from "../../renderer/types.js";
 
 import { ClockStub, DocumentStub, EventTargetStub, MotionQueryStub } from "./browser-stubs.js";
-import {
-	activitiesSource, cuesSource, hostSource, idleSource,
-	interactionSource, pointerSource, preferencesSource, presenterSource, presetsSource,
-	schedulerSource, sequencesSource, tablesSource, timelineSource,
-} from "./sources.js";
 
 type CharacterOptions = object;
 
@@ -28,6 +24,7 @@ class CharacterStub {
 	readonly reducedMotion: boolean[] = [];
 	readonly playedStates: string[] = [];
 	destroyed = false;
+	renderCount = 0;
 	hopCount = 0;
 	pounceCount = 0;
 	spinCount = 0;
@@ -135,24 +132,14 @@ class CharacterStub {
 		this.paused.push(value);
 	}
 
+	renderOnce(): void {
+		this.renderCount += 1;
+	}
+
 	destroy(): void {
 		this.destroyed = true;
 	}
 }
-
-interface RendererUpdate {
-	activity: string;
-	cue?: string;
-}
-
-interface RendererApi {
-	destroy(): void;
-	setPreferences(preferences: unknown): void;
-	showAction(name: string): void;
-	update(update: RendererUpdate): void;
-}
-
-type DragMessage = { phase: "start" | "end" } | { phase: "move"; dx: number; dy: number };
 
 export interface RendererFactory {
 	create(options: {
@@ -210,57 +197,28 @@ export function createHarness(initiallyHidden = false, random = (): number => 0)
 		}
 	}
 	const pointerTarget = new EventTargetStub();
-	const windowStub: Record<string, unknown> = {
-		addEventListener: pointerTarget.addEventListener.bind(pointerTarget),
-		removeEventListener: pointerTarget.removeEventListener.bind(pointerTarget),
-		OPET_GEO: {
-			shapes: { blob: {}, cloud: {} },
-		},
-		OPET_GEOMETRY: { create: (): object => ({}) },
-		OPET_EFFECTS: { create: (): object => ({}) },
-		OPET_EYES: { create: (): object => ({}) },
-		OPET_MATH: {
-			create: (source: () => number): { rand(minimum: number, maximum: number): number } => ({
-				rand: (minimum, maximum) => minimum + source() * (maximum - minimum),
-			}),
-		},
-		OPET_RENDER: { create: (): object => ({}) },
-		O_PET_RUNTIME: {
-			create: (_dependencies: unknown, options: CharacterOptions): CharacterStub => new HarnessCharacter({}, options),
-		},
-	};
-	windowStub.window = windowStub;
-	vm.runInNewContext(tablesSource, windowStub);
-	vm.runInNewContext(presetsSource, windowStub);
-	vm.runInNewContext(sequencesSource, windowStub);
-	for (const source of [
-		schedulerSource,
-		timelineSource,
-		presenterSource,
-		activitiesSource,
-		idleSource,
-		cuesSource,
-		interactionSource,
-		pointerSource,
-		preferencesSource,
-	]) vm.runInNewContext(source, windowStub);
-	vm.runInNewContext(hostSource, windowStub);
-	const factory = windowStub.OPetRenderer as RendererFactory;
 	const document = new DocumentStub();
 	document.hidden = initiallyHidden;
 	const motion = new MotionQueryStub();
 	const drags: DragMessage[] = [];
-	const api = factory.create({
+	const rendererOptions = {
 		clock,
 		document,
 		frameClock: clock,
 		motionQuery: motion,
 		now: () => clock.now,
 		pointerTarget,
-		postDrag: (message) => drags.push(message),
+		postDrag: (message: DragMessage) => drags.push(message),
 		random,
 		svg: {},
 		viewportWidth: () => 1,
+	};
+	// @ts-expect-error 浏览器替身只实现渲染器实际使用的宿主接口。
+	const api = createRenderer(rendererOptions, {
+		runtime: {
+			create: (_dependencies: unknown, options: CharacterOptions): CharacterStub =>
+				new HarnessCharacter({}, options),
+		},
 	});
 	const character = instances[0];
 	if (character === undefined) throw new Error("渲染器未创建角色");

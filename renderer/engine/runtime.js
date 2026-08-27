@@ -1,864 +1,907 @@
+// @ts-check
 /* 动画运行时。解析控制通道、推进弹簧并向视图提交帧模型。 */
-(function (g) {
-  function create(dependencies, options) {
-    const M = dependencies.math;
-    const T = dependencies.tables;
-    const MOTION = dependencies.motion;
-    const EXPRESSION = dependencies.expression;
-    const CHOREOGRAPHY = dependencies.choreography;
-    const ACTIONS = dependencies.actions;
-    const EY = dependencies.eyes;
-    const FX = dependencies.effects;
-    const GEO = dependencies.geometry;
-    const DATA = dependencies.data;
-    const PRESETS = dependencies.presets;
-    const GAZE = dependencies.gaze;
-    const VISUAL_CHANNELS = dependencies.visualChannels;
-    const { spring, stepSpring, springSteps, clamp, K2, mapPointer, Rn } = M;
-    const { lerpPoly, lerpFace } = GEO;
-    const {
-      EYE_PLAYLIST,
-      EYE_HOLD_MS,
-      BLINK_MS,
-      SPRINGS,
-      FACE_TUNE,
-      POSE,
-      POSE_HOME,
-      WINK_STATES,
-      poseScale,
-      shapeEyeScale,
-    } = T;
+/**
+ * @param {{ math: import("../types.js").MathPort, tables: import("../types.js").RuntimeTables, motion: typeof import("./channels/motion.js"), expression: typeof import("./channels/expression.js"), choreography: typeof import("./channels/choreography.js"), actions: typeof import("./actions.js"), eyes: import("../types.js").EyeController, effects: { CYCLE: ReadonlySet<string>, CYCLE_ON: Record<string, number>, CYCLE_OFF: number }, geometry: import("../types.js").RuntimeGeometry, data: import("../types.js").GeometryData, presets: import("../types.js").PresetCatalog, gaze: typeof import("./channels/gaze.js"), frame: typeof import("./frame.js"), pointerTracker: typeof import("./pointer-tracker.js"), visualChannels: typeof import("./visual-channels.js") }} dependencies
+ * @param {{ clock: import("../types.js").CharacterClock, createRenderer: () => import("../types.js").RendererPort, random: () => number }} options
+ */
+function create(dependencies, options) {
+  const M = dependencies.math;
+  const T = dependencies.tables;
+  const MOTION = dependencies.motion;
+  const EXPRESSION = dependencies.expression;
+  const CHOREOGRAPHY = dependencies.choreography;
+  const ACTIONS = dependencies.actions;
+  const EY = dependencies.eyes;
+  const FX = dependencies.effects;
+  const GEO = dependencies.geometry;
+  const DATA = dependencies.data;
+  const PRESETS = dependencies.presets;
+  const GAZE = dependencies.gaze;
+  const FRAME = dependencies.frame;
+  const POINTER_TRACKER = dependencies.pointerTracker;
+  const VISUAL_CHANNELS = dependencies.visualChannels;
+  const { spring, stepSpring, springSteps, clamp, K2 } = M;
+  const { lerpPoly, lerpFace } = GEO;
+  const {
+    EYE_PLAYLIST,
+    EYE_HOLD_MS,
+    BLINK_MS,
+    SPRINGS,
+    FACE_TUNE,
+    POSE,
+    POSE_HOME,
+    WINK_STATES,
+    poseScale,
+    shapeEyeScale,
+  } = T;
 
-    const resetSpring = (value, target) => {
-      value.x = target;
-      value.t = target;
-      value.v = 0;
-    };
-    const emptyExtras = () => ({
-      turnRadians: null,
-      rollOffsetDeg: 0,
-      xOffsetPx: 0,
-      yOffsetPx: 0,
-      freeRollDeg: 0,
-      gazeXPx: 0,
-      gazeYPx: 0,
-      hopYPx: 0,
-    });
+  /** @param {import("../types.js").Spring} value @param {number} target */
+  const resetSpring = (value, target) => {
+    value.x = target;
+    value.t = target;
+    value.v = 0;
+  };
+  /** @returns {import("../types.js").FrameExtras} */
+  const emptyExtras = () => ({
+    turnRadians: null,
+    rollOffsetDeg: 0,
+    xOffsetPx: 0,
+    yOffsetPx: 0,
+    freeRollDeg: 0,
+    gazeXPx: 0,
+    gazeYPx: 0,
+    hopYPx: 0,
+  });
 
-    class OPetCharacter {
-      constructor(opts) {
-        this.clock = opts.clock;
-        this.destroyed = false;
-        this.random = opts.random;
-        this.math = M;
-        this.rand = this.math.rand;
-        this.sign = this.math.sign;
-        this.motionController = MOTION.create(this.math, T);
-        this.expressionController = EXPRESSION.create(this.math, T);
-        this.gazeController = GAZE.create(this.math);
-        this.choreographyController = CHOREOGRAPHY.create(this.math);
-        this.actionController = ACTIONS.create(this.math);
-        this.eyeController = EY;
-        this.preferredShapeName = "blob";
-        this.shapeName = this.preferredShapeName;
-        this.sceneShapeName = null;
-        this.state = "spawning";
-        this.motionState = null;
-        this.expressionState = null;
-        this.faceState = null;
-        this.gazeState = null;
-        this.choreographyState = null;
-        this.sceneDirection = 0;
-        this.sceneVariant = null;
-        this.faceRoll = 0;
-        this.eyeLids = null;
-        this.bodyDeformation = null;
-        this.faceTune = FACE_TUNE;
-        this.pose = { ...POSE };
-        this.poseHome = POSE_HOME;
-        this.eyeScaleProp = shapeEyeScale(this.shapeName);
-        this.gazeTarget = null;
-        this.paused = false;
-        this.reduceMotion = false;
-        this.badgeColor = "var(--gb-badge, #1d9bf0)";
+  /** @param {string} state @returns {[number, ...number[]]} */
+  const eyePlaylist = (state) => {
+    const playlist = EYE_PLAYLIST[state];
+    if (!playlist?.length) throw new Error(`表情 ${state} 缺少眼形播放列表`);
+    return /** @type {[number, ...number[]]} */ (playlist);
+  };
+  /** @param {string} state @returns {readonly [number, number]} */
+  const eyeHold = (state) => {
+    const hold = EYE_HOLD_MS[state];
+    if (!hold) throw new Error(`表情 ${state} 缺少眼形保持时间`);
+    return hold;
+  };
+  /** @param {string | null} state @param {string} channel */
+  const requiredState = (state, channel) => {
+    if (state === null) throw new Error(`${channel} 控制通道尚未初始化`);
+    return state;
+  };
 
-        this.spin = spring(0);
-        this.tx = spring(0);
-        this.ty = spring(0);
-        this.squashX = spring(1);
-        this.squash = spring(1);
-        this.blink = spring(1);
-        this.eyeScale = spring(1);
-        this.gazeX = spring(0);
-        this.gazeY = spring(0);
-        this.eyeMorph = spring(1);
-        this.frontBlend = spring(0);
-        this.shapeSpring = spring(1);
-        this.shapeScaleFrom = this.pose.scale;
-        this.shapeScaleTo = this.shapeScaleFrom;
+  class OPetCharacter {
+    /** @param {{ clock: import("../types.js").CharacterClock, createRenderer: () => import("../types.js").RendererPort, random: () => number }} opts */
+    constructor(opts) {
+      this.clock = opts.clock;
+      this.destroyed = false;
+      this.random = opts.random;
+      this.math = M;
+      this.rand = this.math.rand;
+      this.sign = this.math.sign;
+      this.motionController = MOTION.create(this.math, T);
+      this.expressionController = EXPRESSION.create(this.math, T);
+      this.gazeController = GAZE.create(this.math);
+      this.choreographyController = CHOREOGRAPHY.create(this.math);
+      this.actionController = ACTIONS.create(this.math);
+      this.eyeController = EY;
+      this.preferredShapeName = "blob";
+      this.shapeName = this.preferredShapeName;
+      /** @type {string | null} */
+      this.sceneShapeName = null;
+      this.state = "spawning";
+      /** @type {string | null} */
+      this.motionState = null;
+      /** @type {string | null} */
+      this.expressionState = null;
+      /** @type {string | null} */
+      this.faceState = null;
+      /** @type {string | null} */
+      this.gazeState = null;
+      /** @type {string | null} */
+      this.choreographyState = null;
+      this.sceneDirection = 0;
+      /** @type {string | null} */
+      this.sceneVariant = null;
+      this.faceRoll = 0;
+      /** @type {[number, number] | null} */
+      this.eyeLids = null;
+      /** @type {import("../types.js").BodyDeformation | null} */
+      this.bodyDeformation = null;
+      this.faceTune = FACE_TUNE;
+      this.pose = { ...POSE };
+      this.poseHome = POSE_HOME;
+      this.eyeScaleProp = shapeEyeScale(this.shapeName);
+      this.paused = false;
+      this.reduceMotion = false;
+      this.badgeColor = "var(--gb-badge, #1d9bf0)";
 
-        this.eyeFrom = 0;
-        this.eyeTo = 0;
-        this.eyeStiffness = 7;
-        this.eyeIdx = 0;
-        this._fromPolys = null;
+      this.spin = spring(0);
+      this.tx = spring(0);
+      this.ty = spring(0);
+      this.squashX = spring(1);
+      this.squash = spring(1);
+      this.blink = spring(1);
+      this.eyeScale = spring(1);
+      this.gazeX = spring(0);
+      this.gazeY = spring(0);
+      this.eyeMorph = spring(1);
+      this.frontBlend = spring(0);
+      this.shapeSpring = spring(1);
+      this.shapeScaleFrom = this.pose.scale;
+      this.shapeScaleTo = this.shapeScaleFrom;
 
-        this.t0 = this.clock.now();
-        this.motionAt = this.t0;
-        this.faceAt = this.t0;
-        this.last = this.t0;
-        this.eyeUntil = this.t0 + this.rand(...EYE_HOLD_MS.idle);
-        this.blinkUntil = this.t0 + this.rand(1500, 7000);
-        this.gazeUntil = this.t0 + 800;
-        this.blinkQueue = [];
-        this.winkAt = -1e9;
-        this.winkEye = 0;
-        this.winkUntil = this.t0 + this.rand(3000, 8000);
-        this.spinTurn = null;
-        this.trick = null;
-        this.hopAt = -1;
-        this.trickCycle = Math.floor(this.rand(0, 5));
-        this.wildWide = false;
-        this.effectSpinRadians = 0;
-        this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
-        this.pointerRaw = null;
-        this.rectCache = null;
-        this.rectAt = -1e9;
-        this.prevShape = this.shapeName;
-        this.prevFace = null;
-        this.prevRing = null;
-        this.prevTilt = null;
-        this.prevBelt = null;
-        this.ctx = this._freshCtx(this.t0);
-        this.pxW = 190;
-        this.pxAt = 0;
-        this.partScale = 1;
-        this.celebrateAt = null;
-        this.extras = emptyExtras();
+      this.eyeFrom = 0;
+      this.eyeTo = 0;
+      this.eyeStiffness = 7;
+      this.eyeIdx = 0;
+      /** @type {[import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]] | null} */
+      this._fromPolys = null;
 
-        this.renderer = opts.createRenderer();
-        this.visual = VISUAL_CHANNELS.create({
-          effects: FX,
-          math: this.math,
-          now: this.t0,
-          renderer: this.renderer,
-          springs: SPRINGS,
-        });
-        this.renderer.setStyle("--fg", "light-dark(#000000, #FFFFFF)");
-        this.renderer.setStyle(
-          "--ink",
-          "linear-gradient(225deg, light-dark(#585858, #FFFFFF), light-dark(#000000, #C2C2C2))",
-        );
-        this.renderer.setStyle(
-          "--bg",
-          "var(--sand-bg-base, var(--disk, #f3efe6))",
-        );
-        this._applyPoseScale();
-        this.setPreset(PRESETS.fromState(this.state), { resetEyes: true });
-        this._render(this.t0);
-        this._raf = this.paused
-          ? null
-          : this.clock.requestAnimationFrame((t) => this._tick(t));
-      }
+      this.t0 = this.clock.now();
+      this.motionAt = this.t0;
+      this.faceAt = this.t0;
+      this.last = this.t0;
+      this.eyeUntil = this.t0 + this.rand(...eyeHold("idle"));
+      this.blinkUntil = this.t0 + this.rand(1500, 7000);
+      this.gazeUntil = this.t0 + 800;
+      /** @type {Array<{ at: number, v: number }>} */
+      this.blinkQueue = [];
+      this.winkAt = -1e9;
+      this.winkEye = 0;
+      this.winkUntil = this.t0 + this.rand(3000, 8000);
+      /** @type {import("../types.js").Spring | null} */
+      this.spinTurn = null;
+      /** @type {{ kind: "spinDizzy" | "spinWild" | "spinBounce", t0: number, dir: number, turns: number } | null} */
+      this.trick = null;
+      this.hopAt = -1;
+      this.trickCycle = Math.floor(this.rand(0, 5));
+      this.wildWide = false;
+      this.effectSpinRadians = 0;
+      this.prevShape = this.shapeName;
+      /** @type {import("../types.js").FaceMetrics | null} */
+      this.prevFace = null;
+      /** @type {import("../types.js").GeometryPoint[] | null} */
+      this.prevRing = null;
+      /** @type {number | null} */
+      this.prevTilt = null;
+      /** @type {number | null} */
+      this.prevBelt = null;
+      this.ctx = this._freshCtx(this.t0);
+      this.pxW = 190;
+      this.pxAt = 0;
+      this.partScale = 1;
+      /** @type {number | null} */
+      this.celebrateAt = null;
+      /** @type {import("../types.js").FrameExtras} */
+      this.extras = emptyExtras();
 
-      destroy() {
-        if (this.destroyed) return;
-        this.destroyed = true;
+      this.renderer = opts.createRenderer();
+      this.pointerTracker = POINTER_TRACKER.create({
+        bounds: () => this.renderer.bounds(),
+        math: this.math,
+      });
+      this.visual = VISUAL_CHANNELS.create({
+        effects: FX,
+        math: this.math,
+        now: this.t0,
+        renderer: this.renderer,
+        springs: SPRINGS,
+      });
+      this.renderer.setStyle("--fg", "light-dark(#000000, #FFFFFF)");
+      this.renderer.setStyle(
+        "--ink",
+        "linear-gradient(225deg, light-dark(#585858, #FFFFFF), light-dark(#000000, #C2C2C2))",
+      );
+      this.renderer.setStyle(
+        "--bg",
+        "var(--sand-bg-base, var(--disk, #f3efe6))",
+      );
+      this._applyPoseScale();
+      this.setPreset(PRESETS.fromState(this.state), { resetEyes: true });
+      this._render(this.t0);
+      this._raf = this.paused
+        ? null
+        : this.clock.requestAnimationFrame((t) => this._tick(t));
+    }
+
+    destroy() {
+      if (this.destroyed) return;
+      this.destroyed = true;
+      if (this._raf !== null) this.clock.cancelAnimationFrame(this._raf);
+      this._raf = null;
+      this.renderer.destroy();
+    }
+
+    /** @param {number} now @returns {import("../types.js").ControllerContext} */
+    _freshCtx(now) {
+      return {
+        motion: {
+          nodUntil: now + 1800,
+          nodEnd: 0,
+          idleShiftAt: now + this.rand(7000, 15_000),
+          idleShiftEnd: 0,
+          idleShiftDuration: 1,
+          idleShiftDirection: 1,
+          sleepTwitchAt: now + this.rand(18_000, 34_000),
+          sleepTwitchEnd: 0,
+          angryShakeUntil: 0,
+          impulseAt: now + this.rand(500, 1200),
+          slumpAt: 0,
+          stAt: now + this.rand(6000, 10000),
+          dragCycle: -1,
+          notifyPop: false,
+        },
+        expression: {
+          wakingBlinked: false,
+          stretchBlinked: false,
+          quizzicalBlinked: false,
+        },
+        choreography: {
+          happyBounced: false,
+          playfulSpun: false,
+          proudFlourished: false,
+          wakingBurst: false,
+        },
+      };
+    }
+
+    _now() {
+      return this.clock.now();
+    }
+
+    get particleAt() {
+      return this.visual.particleAt();
+    }
+
+    /** @param {boolean} v */
+    setPaused(v) {
+      if (this.destroyed) return;
+      const paused = !!v;
+      if (paused === this.paused) return;
+      this.paused = paused;
+      if (paused) {
         if (this._raf !== null) this.clock.cancelAnimationFrame(this._raf);
         this._raf = null;
-        this.renderer.destroy();
-      }
-
-      _freshCtx(now) {
-        return {
-          motion: {
-            nodUntil: now + 1800,
-            nodEnd: 0,
-            idleShiftAt: now + this.rand(7000, 15_000),
-            idleShiftEnd: 0,
-            idleShiftDuration: 1,
-            idleShiftDirection: 1,
-            sleepTwitchAt: now + this.rand(18_000, 34_000),
-            sleepTwitchEnd: 0,
-            angryShakeUntil: 0,
-            impulseAt: now + this.rand(500, 1200),
-            slumpAt: 0,
-            stAt: now + this.rand(6000, 10000),
-            dragCycle: -1,
-            notifyPop: false,
-          },
-          expression: {
-            wakingBlinked: false,
-            stretchBlinked: false,
-            quizzicalBlinked: false,
-          },
-          choreography: {
-            happyBounced: false,
-            playfulSpun: false,
-            proudFlourished: false,
-            wakingBurst: false,
-          },
-        };
-      }
-
-      _now() {
-        return this.clock.now();
-      }
-
-      get particleAt() {
-        return this.visual.state.particleAt;
-      }
-
-      setPaused(v) {
-        if (this.destroyed) return;
-        const paused = !!v;
-        if (paused === this.paused) return;
-        this.paused = paused;
-        if (paused) {
-          if (this._raf !== null) this.clock.cancelAnimationFrame(this._raf);
-          this._raf = null;
-        } else {
-          this.last = this.clock.now();
-          this._raf = this.clock.requestAnimationFrame((t) => this._tick(t));
-        }
-      }
-
-      setReduceMotion(v) {
-        this.reduceMotion = !!v;
-        this.renderer.setReduceMotion(this.reduceMotion);
-      }
-
-      setGazeTarget(pt) {
-        this.gazeTarget = pt;
-      }
-
-      setPointerPosition(pt) {
-        this.pointerRaw = pt;
-      }
-
-      setShape(name) {
-        if (name === this.preferredShapeName) return;
-        this.preferredShapeName = name;
-        if (this.sceneShapeName === null) this._transitionShape(name, true);
-      }
-
-      _transitionShape(name, playTrick) {
-        if (name === this.shapeName) return;
-        const k = K2(clamp(this.shapeSpring.x, 0, 1));
-        const currentScale =
-          this.shapeScaleFrom + (this.shapeScaleTo - this.shapeScaleFrom) * k;
-        const rest = GEO.shapeMetrics(this.shapeName);
-        if (k >= 1 || !this.prevFace || !this.prevRing) {
-          this.prevFace = rest.face;
-          this.prevRing = rest.ring;
-          this.prevTilt = rest.tilt;
-          this.prevBelt = rest.belt;
-        } else {
-          this.prevFace = lerpFace(this.prevFace, rest.face, k);
-          this.prevRing = GEO.lerpRing(this.prevRing, rest.ring, k);
-          this.prevTilt += (rest.tilt - this.prevTilt) * k;
-          this.prevBelt += (rest.belt - this.prevBelt) * k;
-        }
-        this.prevShape = this.shapeName;
-        this.shapeName = name;
-        this.shapeScaleFrom = currentScale;
-        this.shapeSpring.x = 0;
-        this.shapeSpring.v = 0;
-        this.shapeSpring.t = 1;
-        this.eyeScaleProp = shapeEyeScale(name);
-        this._applyPoseScale();
-        if (playTrick) this._cycleShapeTrick();
-      }
-
-      setInk(paint) {
-        this.renderer.setStyle(
-          "--fg",
-          paint.kind === "solid" ? paint.color : paint.accent,
-        );
-        this.renderer.setBodyPaint(paint);
-      }
-
-      setEyeColor(color) {
-        this.renderer.setStyle("--bg", color);
-      }
-
-      playPreset(preset) {
-        const scene = PRESETS.resolve(preset);
-        this._resetPlaybackRuntime();
-        this._applyComposition(scene, { resetEyes: true, restart: true });
-      }
-
-      setPreset(preset, { resetEyes = false } = {}) {
-        const scene = PRESETS.resolve(preset);
-        this._applyComposition(scene, { resetEyes });
-      }
-
-      _resetPlaybackRuntime() {
-        for (const [value, target] of [
-          [this.spin, 0],
-          [this.tx, 0],
-          [this.ty, 0],
-          [this.squashX, 1],
-          [this.squash, 1],
-          [this.blink, 1],
-          [this.eyeScale, 1],
-          [this.gazeX, 0],
-          [this.gazeY, 0],
-          [this.eyeMorph, 1],
-        ])
-          resetSpring(value, target);
-        this.faceRoll = 0;
-        this.eyeLids = null;
-        this.bodyDeformation = null;
-        this.effectSpinRadians = 0;
-        this.extras = emptyExtras();
-        this.visual.resetPlayback();
-      }
-
-      _applyComposition(scene, { resetEyes = false, restart = false } = {}) {
-        const motion = scene.motion;
-        const expression = scene.expression;
-        const face = scene.face;
-        const gaze = scene.gaze;
-        const sceneShape = scene.shape;
-        const choreography = scene.choreography;
-        const direction = scene.direction ?? 0;
-        const variant = scene.variant ?? null;
-        const motionChanged = motion !== this.motionState;
-        const expressionChanged = expression !== this.expressionState;
-        const faceChanged = face !== this.faceState;
-        const visualChanged = this.visual.differs(scene);
-        const gazeChanged = gaze !== this.gazeState;
-        const shapeChanged = sceneShape !== this.sceneShapeName;
-        const performanceChanged =
-          choreography !== this.choreographyState ||
-          direction !== this.sceneDirection ||
-          variant !== this.sceneVariant;
-        if (
-          !motionChanged &&
-          !expressionChanged &&
-          !faceChanged &&
-          !visualChanged &&
-          !gazeChanged &&
-          !shapeChanged &&
-          !performanceChanged &&
-          !resetEyes &&
-          !restart
-        )
-          return;
-
-        const now = this._now();
-        this.state = motion;
-        this.motionState = motion;
-        this.expressionState = expression;
-        this.faceState = face;
-        this.gazeState = gaze;
-        this.sceneShapeName = sceneShape;
-        this.choreographyState = choreography;
-        this.sceneDirection = direction;
-        this.sceneVariant = variant;
-        this.frontBlend.t = expression === "front" ? 1 : 0;
-        if (shapeChanged)
-          this._transitionShape(sceneShape ?? this.preferredShapeName, false);
-
-        if (motionChanged || performanceChanged || restart) {
-          this.motionAt = now;
-          this.ctx = this._freshCtx(now);
-          this.ctx.motion.stAt =
-            now +
-            (motion === "excited"
-              ? this.rand(400, 1100)
-              : motion === "searching"
-                ? this.rand(800, 1600)
-                : motion === "working"
-                  ? this.rand(1200, 2400)
-                  : this.rand(6000, 10000));
-          if (motion === "drowsy")
-            this.ctx.motion.nodUntil = now + this.rand(12_000, 24_000);
-          this.celebrateAt = motion === "celebrate" ? now + 140 : null;
-          this.trick = null;
-          this.spinTurn = null;
-          this.hopAt = -1;
-          this.wildWide = false;
-        }
-
-        if (faceChanged || restart) this.faceAt = now;
-
-        if (expressionChanged || resetEyes || restart) {
-          const list = EYE_PLAYLIST[expression];
-          this.eyeIdx = 0;
-          if (resetEyes || restart) {
-            this.blinkQueue.length = 0;
-            this.eyeFrom = list[0];
-            this.eyeTo = list[0];
-            this._fromPolys = null;
-            this.eyeMorph.x = 1;
-            this.eyeMorph.t = 1;
-            this.eyeMorph.v = 0;
-          } else if (expression !== "sleeping" && expression !== "waking") {
-            this._morphEyes(list[0], expression === "excited" ? 10 : 8);
-          }
-          this.eyeUntil = now + this.rand(...EYE_HOLD_MS[expression]);
-          const blink = BLINK_MS[expression];
-          this.blinkUntil = blink ? now + this.rand(1500, 7000) : Infinity;
-          this.winkUntil = now + this.rand(3000, 8000);
-          if (
-            expression !== "waking" &&
-            expression !== "sleeping" &&
-            expression !== "drowsy" &&
-            expression !== "winking"
-          ) {
-            this.eyeController.queueBlink(this.blinkQueue, now);
-          }
-        }
-
-        this.visual.apply(scene, now, restart);
-        if (gazeChanged || restart) {
-          if (gaze === "front" || gaze === "sleeping") {
-            this.gazeX.t = 0;
-            this.gazeY.t = 0;
-            this.gazeUntil = now + this.rand(5000, 8000);
-          } else {
-            this.gazeUntil = now + this.rand(500, 1400);
-          }
-        }
-      }
-
-      winkOnce(eye = this.random() < 0.5 ? 0 : 1) {
-        this.blinkQueue.length = 0;
-        this.blink.x = 1;
-        this.blink.v = 0;
-        this.blink.t = 1;
-        this.winkAt = this._now();
-        this.winkEye = eye === 0 ? 0 : 1;
-      }
-
-      spinOnce(turns = 1, direction = this.sign()) {
-        this._pn(turns, direction);
-      }
-      hopOnce() {
-        this._startHop(this._now());
-      }
-      pounceOnce(direction = 0, strength = 1) {
-        if (this.reduceMotion || this.paused) return;
-        this.tx.v += direction * 95 * strength;
-        this.ty.v -= 115 * strength;
-        this.squash.v += 2.5 * strength;
-      }
-      _applyPoseScale() {
-        const scale = poseScale(this.shapeName);
-        this.pose.scale = scale;
-        this.shapeScaleTo = scale;
-      }
-
-      _applyViewportScale() {
-        const amount = K2(clamp(this.shapeSpring.x, 0, 1));
-        const scale =
-          this.shapeScaleFrom +
-          (this.shapeScaleTo - this.shapeScaleFrom) * amount;
-        if (Math.abs(scale - 1) > 0.001) {
-          this.renderer.setViewportStyle("transform", `scale(${scale})`);
-          this.renderer.setViewportStyle("transformOrigin", "50% 50%");
-        } else {
-          this.renderer.setViewportStyle("transform", "");
-        }
-      }
-
-      _morphEyes(index, stiffness = 7) {
-        if (index === this.eyeTo && this.eyeMorph.t === 1) return;
-        const t = clamp(this.eyeMorph.x, 0, 1);
-        this.eyeFrom = this.eyeTo;
-        this._fromPolys = this._currentPolys(t);
-        this.eyeTo = index;
-        this.eyeMorph.x = 0;
-        this.eyeMorph.v = 0;
-        this.eyeMorph.t = 1;
-        this.eyeStiffness = stiffness;
-      }
-
-      _currentPolys(t) {
-        const eyes = DATA.eyes;
-        const from = this._fromPolys || eyes[this.eyeFrom];
-        const to = eyes[this.eyeTo];
-        return [lerpPoly(from[0], to[0], t), lerpPoly(from[1], to[1], t)];
-      }
-
-      _pn(turns = 1, dir = this.sign()) {
-        if (this.reduceMotion || this.paused || this.spinTurn) return;
-        this.spinTurn = this.actionController.startSpin(turns, dir);
-      }
-
-      _startHop(now) {
-        if (this.reduceMotion || this.paused) return;
-        if (this.hopAt < 0) this.hopAt = now;
-      }
-
-      _cycleShapeTrick() {
-        if (this.reduceMotion || this.paused) return;
-        this.trickCycle = (this.trickCycle + 1) % 5;
-        this.wildWide = false;
-        if (this.trickCycle === 0) this._pn(1);
-        else if (this.trickCycle === 1) {
-          this.wildWide = true;
-          this._pn(2);
-        } else if (this.trickCycle === 2)
-          this.trick = this.actionController.startTrick(
-            "spinBounce",
-            this.reduceMotion,
-            this._now(),
-          );
-        else if (this.trickCycle === 3)
-          this.trick = this.actionController.startTrick(
-            "spinDizzy",
-            this.reduceMotion,
-            this._now(),
-          );
-        else {
-          this._pn(1);
-          this.renderer.burst(16, 0.95, 0.3);
-        }
-      }
-
-      _updatePointer(now) {
-        const lockFront =
-          this.gazeState === "front" || this.gazeState === "sleeping";
-        const src = lockFront
-          ? null
-          : this.gazeTarget || this.pointerRaw;
-        if (src) {
-          if (now - this.rectAt > 200) {
-            this.rectCache = this.renderer.bounds();
-            this.rectAt = now;
-          }
-          const rect = this.rectCache;
-          if (rect && rect.width > 0) {
-            const mapped = this.gazeTarget ? src : mapPointer(rect, src);
-            this.pointer.tx =
-              clamp(
-                (mapped.x - (rect.left + rect.width / 2)) / rect.width,
-                -0.6,
-                0.6,
-              ) * 22;
-            this.pointer.ty =
-              clamp(
-                (mapped.y - (rect.top + rect.height / 2)) / rect.height,
-                -0.6,
-                0.6,
-              ) * 14;
-          }
-        } else {
-          this.pointer.tx = 0;
-          this.pointer.ty = 0;
-        }
-        const z = Rn(0.16);
-        this.pointer.x += (this.pointer.tx - this.pointer.x) * z;
-        this.pointer.y += (this.pointer.ty - this.pointer.y) * z;
-      }
-
-      _render(now) {
-        const morphT = clamp(this.eyeMorph.x, 0, 1);
-        this._applyViewportScale();
-        this.renderer.render({
-          ...this.visual.state,
-          now,
-          badgeColor: this.badgeColor,
-          blink: this.blink,
-          bodyDeformation: this.bodyDeformation,
-          effectSpinRadians: this.effectSpinRadians,
-          extras: this.extras,
-          eyeLids: this.eyeLids,
-          eyeMorph: this.eyeMorph,
-          eyePolys: this._currentPolys(morphT),
-          eyeScale: this.eyeScale,
-          eyeScaleProp: this.eyeScaleProp,
-          faceRoll: this.faceRoll,
-          faceTune: this.faceTune,
-          frontBlend: this.frontBlend,
-          gazeState: this.gazeState,
-          gazeTarget: this.gazeTarget,
-          gazeX: this.gazeX,
-          gazeY: this.gazeY,
-          pointer: this.pointer,
-          pointerRaw: this.pointerRaw,
-          pose: this.pose,
-          poseHome: this.poseHome,
-          prevBelt: this.prevBelt,
-          prevFace: this.prevFace,
-          prevRing: this.prevRing,
-          prevShape: this.prevShape,
-          prevTilt: this.prevTilt,
-          pxW: this.pxW,
-          reduceMotion: this.reduceMotion,
-          shapeName: this.shapeName,
-          shapeSpring: this.shapeSpring,
-          spin: this.spin,
-          squashX: this.squashX,
-          squash: this.squash,
-          tx: this.tx,
-          ty: this.ty,
-          winkAt: this.winkAt,
-          winkEye: this.winkEye,
-        });
-      }
-
-      _tick(now) {
-        const dt = Math.min((now - this.last) / 1000, 0.1);
-        this.last = now;
-
-        if (this.paused) {
-          this._raf = null;
-          return;
-        }
-
-        const mt = (now - this.t0) / 1000;
-        const dtState = (now - this.motionAt) / 1000;
-        const dtFace = (now - this.faceAt) / 1000;
-        const dtParticle = (now - this.visual.state.particleAt) / 1000;
-        const controllerOptions = {
-          eyeTo: this.eyeTo,
-          eyeMorphX: this.eyeMorph.x,
-          blinkX: this.blink.x,
-          allowAmbientSpin: this.visual.state.formState !== "pencil",
-          direction: this.sceneDirection,
-          variant: this.sceneVariant,
-          reduceMotion: this.reduceMotion,
-        };
-        const motion = this.motionController.sample(
-          this.motionState,
-          mt,
-          dtState,
-          now,
-          this.ctx.motion,
-          controllerOptions,
-        );
-        const expression = this.expressionController.sample(
-          this.faceState,
-          mt,
-          dtFace,
-          now,
-          this.ctx.expression,
-          { ...controllerOptions, slumpAt: this.ctx.motion.slumpAt },
-        );
-        this.spin.t = motion.rollDeg;
-        this.tx.t = motion.xPx;
-        this.ty.t = motion.yPx;
-        this.squashX.t = motion.squashX;
-        this.squash.t = motion.squashY;
-        this.bodyDeformation = motion.deformation;
-        this.eyeScale.t = expression.eyeScale;
-        this.faceRoll = expression.faceRollDeg;
-        this.eyeLids = expression.eyeLids;
-        if (motion.impulse.yVelocity) this.ty.v += motion.impulse.yVelocity;
-        if (motion.impulse.rollVelocity)
-          this.spin.v += motion.impulse.rollVelocity;
-        if (expression.eyeTarget)
-          this._morphEyes(expression.eyeTarget[0], expression.eyeTarget[1]);
-        if (motion.requestBlink || expression.requestBlink)
-          this.eyeController.queueBlink(this.blinkQueue, now);
-        if (motion.impulse.spin) this._pn(...motion.impulse.spin);
-        for (const event of this.choreographyController.sample(
-          this.choreographyState,
-          dtState,
-          this.ctx.choreography,
-          { direction: this.sceneDirection },
-        )) {
-          if (event.channel === "particles" && event.type === "burst") {
-            this.renderer.burst(event.count, event.strength);
-          } else if (event.channel === "action") {
-            if (event.type === "hop") {
-              this._startHop(now);
-              continue;
-            }
-            if (event.type === "spin") {
-              this._pn(event.turns, event.direction);
-              continue;
-            }
-            const trickKind =
-              event.type === "spin-bounce"
-                ? "spinBounce"
-                : event.type === "spin-dizzy"
-                  ? "spinDizzy"
-                  : null;
-            if (
-              trickKind &&
-              !this.reduceMotion &&
-              !this.spinTurn &&
-              !this.trick &&
-              this.hopAt < 0
-            ) {
-              this.trick = this.actionController.startTrick(
-                trickKind,
-                this.reduceMotion,
-                now,
-                event.direction,
-              );
-            }
-          }
-        }
-
-        this.visual.prepare(now, this.reduceMotion);
-
-        if (
-          this.celebrateAt !== null &&
-          now >= this.celebrateAt &&
-          !this.trick &&
-          !this.spinTurn
-        ) {
-          this.trick = this.actionController.startTrick(
-            "spinWild",
-            this.reduceMotion,
-            now,
-          );
-          this.celebrateAt = now + 6200;
-        }
-
-        const tf = this.actionController.sampleTrick(this.trick, now);
-        if (tf.requestHop) this._startHop(now);
-        if (tf.done) this.trick = null;
-        let hopY = this.actionController.sampleHop(this.hopAt, now);
-        if (hopY == null) {
-          this.hopAt = -1;
-          hopY = 0;
-        }
-        let turnRadians = tf.turnRadians;
-        if (this.spinTurn) {
-          turnRadians = (turnRadians ?? 0) + this.spinTurn.x;
-          if (this.actionController.spinSettled(this.spinTurn))
-            this.spinTurn = null;
-        }
-        this.extras = { ...tf, turnRadians, hopYPx: hopY };
-
-        if (this.extras.eyeScale != null)
-          this.eyeScale.t = this.extras.eyeScale;
-
-        if (
-          this.expressionState !== "waking" &&
-          this.expressionState !== "sleeping" &&
-          now >= this.eyeUntil
-        ) {
-          const list = EYE_PLAYLIST[this.expressionState];
-          this.eyeIdx =
-            (this.eyeIdx + 1 + Math.floor(this.rand(0, list.length - 1))) %
-            list.length;
-          const stiff =
-            this.expressionState === "searching" ||
-            this.expressionState === "excited"
-              ? 10
-              : 6;
-          this._morphEyes(list[this.eyeIdx], stiff);
-          this.eyeUntil = now + this.rand(...EYE_HOLD_MS[this.expressionState]);
-        }
-
-        const blinkCadence = BLINK_MS[this.expressionState];
-        if (blinkCadence && now >= this.blinkUntil) {
-          this.eyeController.queueBlink(this.blinkQueue, now);
-          this.blinkUntil = now + this.rand(...blinkCadence);
-        }
-        const blinkKey = this.eyeController.consumeBlink(this.blinkQueue, now);
-        this.blink.t =
-          blinkKey ??
-          (this.blinkQueue.length
-            ? this.blink.t
-            : (this.extras.lidOverride ?? expression.restLid));
-
-        if (now >= this.gazeUntil) {
-          const gz = this.gazeController.next(
-            this.gazeState,
-            this.sceneDirection,
-          );
-          this.gazeX.t = gz.x;
-          this.gazeY.t = gz.y;
-          this.gazeUntil = now + this.rand(...gz.hold);
-        }
-
-        if (WINK_STATES.has(this.expressionState) && now >= this.winkUntil) {
-          this.winkAt = now;
-          this.winkEye = this.random() < 0.5 ? 0 : 1;
-          this.winkUntil = now + this.rand(4500, 10000);
-        }
-
-        const humming = this.visual.state.particleState === "wide-spin-belts";
-        const loading = this.visual.state.particleState === "spin-belts";
-        if ((humming || loading) && !this.reduceMotion) {
-          const Zt = dtParticle;
-          const dn = loading ? 3 : 1.6;
-          const on =
-            Zt < 0.5
-              ? 7 * K2(Zt / 0.5)
-              : Zt < 1.3
-                ? 7 + (dn - 7) * K2((Zt - 0.5) / 0.8)
-                : dn + 0.3 * Math.sin(Zt * 0.5);
-          this.effectSpinRadians += on * dt;
-        }
-
-        if (this.reduceMotion) {
-          this._morphEyes(EYE_PLAYLIST[this.expressionState][0]);
-          resetSpring(this.frontBlend, this.frontBlend.t);
-          this.spin.t = 0;
-          this.tx.t = 0;
-          this.ty.t = 0;
-          this.squashX.t = 1;
-          this.squash.t = 1;
-          this.bodyDeformation = null;
-          this.blink.t = 1;
-          this.eyeScale.t = 1;
-        }
-
-        const nSteps = springSteps(dt);
-        const step = dt / nSteps;
-        for (let i = 0; i < nSteps; i++) {
-          stepSpring(this.eyeMorph, this.eyeStiffness, 1, step);
-          stepSpring(this.frontBlend, ...SPRINGS.front, step);
-          if (this.spinTurn)
-            stepSpring(this.spinTurn, ...SPRINGS.spinTurn, step);
-          stepSpring(this.spin, ...SPRINGS.spin, step);
-          stepSpring(this.tx, ...SPRINGS.x, step);
-          stepSpring(this.ty, ...SPRINGS.y, step);
-          stepSpring(this.squashX, ...SPRINGS.squash, step);
-          stepSpring(this.squash, ...SPRINGS.squash, step);
-          stepSpring(this.blink, ...SPRINGS.blink, step);
-          stepSpring(this.eyeScale, ...SPRINGS.eyeScale, step);
-          stepSpring(this.gazeX, ...SPRINGS.gazeX, step);
-          stepSpring(this.gazeY, ...SPRINGS.gazeY, step);
-          stepSpring(this.shapeSpring, ...SPRINGS.shape, step);
-          this.visual.integrate(step);
-        }
-        this.visual.finishFrame(this.reduceMotion);
-
-        let spinAngle = 0;
-        if (this.spinTurn) spinAngle = this.spinTurn.x;
-        else if (this.extras.turnRadians != null)
-          spinAngle = this.extras.turnRadians;
-        else if (humming || loading) spinAngle = this.effectSpinRadians;
-        if (now - this.pxAt > 500) {
-          const w = this.renderer.bounds().width;
-          if (w > 0) {
-            this.pxW = w;
-            this.partScale = clamp(Math.pow(340 / w, 0.7), 1, 2.6);
-          }
-          this.pxAt = now;
-        }
-        this.renderer.updateParticles(now, dt, {
-          spinAngle,
-          emitTrails:
-            this.spinTurn !== null || this.trick !== null || humming || loading,
-          sizeScale: this.partScale,
-          wideStyle:
-            this.trick?.kind === "spinWild" || this.wildWide || humming,
-          sustainBelts: humming || loading,
-        });
-
-        this._updatePointer(now);
-        this._render(now);
-        this._raf =
-          this.paused || this.destroyed
-            ? null
-            : this.clock.requestAnimationFrame((t) => this._tick(t));
+      } else {
+        this.last = this.clock.now();
+        this._raf = this.clock.requestAnimationFrame((t) => this._tick(t));
       }
     }
 
-    return new OPetCharacter(options);
+    renderOnce() {
+      if (this.destroyed || !this.paused) return;
+      this._tick(this.clock.now(), false);
+    }
+
+    /** @param {boolean} v */
+    setReduceMotion(v) {
+      this.reduceMotion = !!v;
+      this.renderer.setReduceMotion(this.reduceMotion);
+    }
+
+    /** @param {import("../types.js").PointerPoint | null} pt */
+    setGazeTarget(pt) {
+      this.pointerTracker.setTarget(pt);
+    }
+
+    /** @param {import("../types.js").PointerPoint | null} pt */
+    setPointerPosition(pt) {
+      this.pointerTracker.setRaw(pt);
+    }
+
+    /** @param {string} name */
+    setShape(name) {
+      if (name === this.preferredShapeName) return;
+      this.preferredShapeName = name;
+      if (this.sceneShapeName === null) this._transitionShape(name, true);
+    }
+
+    /** @param {string} name @param {boolean} playTrick */
+    _transitionShape(name, playTrick) {
+      if (name === this.shapeName) return;
+      const k = K2(clamp(this.shapeSpring.x, 0, 1));
+      const currentScale =
+        this.shapeScaleFrom + (this.shapeScaleTo - this.shapeScaleFrom) * k;
+      const rest = GEO.shapeMetrics(this.shapeName);
+      if (
+        k >= 1 ||
+        !this.prevFace ||
+        !this.prevRing ||
+        this.prevTilt === null ||
+        this.prevBelt === null
+      ) {
+        this.prevFace = rest.face;
+        this.prevRing = rest.ring;
+        this.prevTilt = rest.tilt;
+        this.prevBelt = rest.belt;
+      } else {
+        this.prevFace = lerpFace(this.prevFace, rest.face, k);
+        this.prevRing = GEO.lerpRing(this.prevRing, rest.ring, k);
+        this.prevTilt += (rest.tilt - this.prevTilt) * k;
+        this.prevBelt += (rest.belt - this.prevBelt) * k;
+      }
+      this.prevShape = this.shapeName;
+      this.shapeName = name;
+      this.shapeScaleFrom = currentScale;
+      this.shapeSpring.x = 0;
+      this.shapeSpring.v = 0;
+      this.shapeSpring.t = 1;
+      this.eyeScaleProp = shapeEyeScale(name);
+      this._applyPoseScale();
+      if (playTrick) this._cycleShapeTrick();
+    }
+
+    /** @param {import("../types.js").BodyPaint} paint */
+    setInk(paint) {
+      this.renderer.setStyle(
+        "--fg",
+        paint.kind === "solid" ? paint.color : paint.accent,
+      );
+      this.renderer.setBodyPaint(paint);
+    }
+
+    /** @param {string} color */
+    setEyeColor(color) {
+      this.renderer.setStyle("--bg", color);
+    }
+
+    /** @param {import("../types.js").Scene} preset */
+    playPreset(preset) {
+      const scene = PRESETS.resolve(preset);
+      this._resetPlaybackRuntime();
+      this._applyComposition(scene, { resetEyes: true, restart: true });
+    }
+
+    /** @param {import("../types.js").Scene} preset @param {{ resetEyes?: boolean }} [options] */
+    setPreset(preset, { resetEyes = false } = {}) {
+      const scene = PRESETS.resolve(preset);
+      this._applyComposition(scene, { resetEyes });
+    }
+
+    _resetPlaybackRuntime() {
+      /** @type {Array<[import("../types.js").Spring, number]>} */
+      const springTargets = [
+        [this.spin, 0],
+        [this.tx, 0],
+        [this.ty, 0],
+        [this.squashX, 1],
+        [this.squash, 1],
+        [this.blink, 1],
+        [this.eyeScale, 1],
+        [this.gazeX, 0],
+        [this.gazeY, 0],
+        [this.eyeMorph, 1],
+      ];
+      for (const [value, target] of springTargets) resetSpring(value, target);
+      this.faceRoll = 0;
+      this.eyeLids = null;
+      this.bodyDeformation = null;
+      this.effectSpinRadians = 0;
+      this.extras = emptyExtras();
+      this.visual.resetPlayback();
+    }
+
+    /** @param {import("../types.js").ResolvedScene} scene @param {{ resetEyes?: boolean, restart?: boolean }} [options] */
+    _applyComposition(scene, { resetEyes = false, restart = false } = {}) {
+      const motion = scene.motion;
+      const expression = scene.expression;
+      const face = scene.face;
+      const gaze = scene.gaze;
+      const sceneShape = scene.shape;
+      const choreography = scene.choreography;
+      const direction = scene.direction ?? 0;
+      const variant = scene.variant ?? null;
+      const motionChanged = motion !== this.motionState;
+      const expressionChanged = expression !== this.expressionState;
+      const faceChanged = face !== this.faceState;
+      const visualChanged = this.visual.differs(scene);
+      const gazeChanged = gaze !== this.gazeState;
+      const shapeChanged = sceneShape !== this.sceneShapeName;
+      const performanceChanged =
+        choreography !== this.choreographyState ||
+        direction !== this.sceneDirection ||
+        variant !== this.sceneVariant;
+      if (
+        !motionChanged &&
+        !expressionChanged &&
+        !faceChanged &&
+        !visualChanged &&
+        !gazeChanged &&
+        !shapeChanged &&
+        !performanceChanged &&
+        !resetEyes &&
+        !restart
+      )
+        return;
+
+      const now = this._now();
+      this.state = motion;
+      this.motionState = motion;
+      this.expressionState = expression;
+      this.faceState = face;
+      this.gazeState = gaze;
+      this.sceneShapeName = sceneShape;
+      this.choreographyState = choreography;
+      this.sceneDirection = direction;
+      this.sceneVariant = variant;
+      this.frontBlend.t = expression === "front" ? 1 : 0;
+      if (shapeChanged)
+        this._transitionShape(sceneShape ?? this.preferredShapeName, false);
+
+      if (motionChanged || performanceChanged || restart) {
+        this.motionAt = now;
+        this.ctx = this._freshCtx(now);
+        this.ctx.motion.stAt =
+          now +
+          (motion === "excited"
+            ? this.rand(400, 1100)
+            : motion === "searching"
+              ? this.rand(800, 1600)
+              : motion === "working"
+                ? this.rand(1200, 2400)
+                : this.rand(6000, 10000));
+        if (motion === "drowsy")
+          this.ctx.motion.nodUntil = now + this.rand(12_000, 24_000);
+        this.celebrateAt = motion === "celebrate" ? now + 140 : null;
+        this.trick = null;
+        this.spinTurn = null;
+        this.hopAt = -1;
+        this.wildWide = false;
+      }
+
+      if (faceChanged || restart) this.faceAt = now;
+
+      if (expressionChanged || resetEyes || restart) {
+        const list = eyePlaylist(expression);
+        this.eyeIdx = 0;
+        if (resetEyes || restart) {
+          this.blinkQueue.length = 0;
+          this.eyeFrom = list[0];
+          this.eyeTo = list[0];
+          this._fromPolys = null;
+          this.eyeMorph.x = 1;
+          this.eyeMorph.t = 1;
+          this.eyeMorph.v = 0;
+        } else if (expression !== "sleeping" && expression !== "waking") {
+          this._morphEyes(list[0], expression === "excited" ? 10 : 8);
+        }
+        this.eyeUntil = now + this.rand(...eyeHold(expression));
+        const blink = BLINK_MS[expression];
+        this.blinkUntil = blink ? now + this.rand(1500, 7000) : Infinity;
+        this.winkUntil = now + this.rand(3000, 8000);
+        if (
+          expression !== "waking" &&
+          expression !== "sleeping" &&
+          expression !== "drowsy" &&
+          expression !== "winking"
+        ) {
+          this.eyeController.queueBlink(this.blinkQueue, now);
+        }
+      }
+
+      this.visual.apply(scene, now, restart);
+      if (gazeChanged || restart) {
+        if (gaze === "front" || gaze === "sleeping") {
+          this.gazeX.t = 0;
+          this.gazeY.t = 0;
+          this.gazeUntil = now + this.rand(5000, 8000);
+        } else {
+          this.gazeUntil = now + this.rand(500, 1400);
+        }
+      }
+    }
+
+    winkOnce(eye = this.random() < 0.5 ? 0 : 1) {
+      this.blinkQueue.length = 0;
+      this.blink.x = 1;
+      this.blink.v = 0;
+      this.blink.t = 1;
+      this.winkAt = this._now();
+      this.winkEye = eye === 0 ? 0 : 1;
+    }
+
+    spinOnce(turns = 1, direction = this.sign()) {
+      this._pn(turns, direction);
+    }
+    hopOnce() {
+      this._startHop(this._now());
+    }
+    pounceOnce(direction = 0, strength = 1) {
+      if (this.reduceMotion || this.paused) return;
+      this.tx.v += direction * 95 * strength;
+      this.ty.v -= 115 * strength;
+      this.squash.v += 2.5 * strength;
+    }
+    _applyPoseScale() {
+      const scale = poseScale(this.shapeName);
+      this.pose.scale = scale;
+      this.shapeScaleTo = scale;
+    }
+
+    _applyViewportScale() {
+      const amount = K2(clamp(this.shapeSpring.x, 0, 1));
+      const scale =
+        this.shapeScaleFrom +
+        (this.shapeScaleTo - this.shapeScaleFrom) * amount;
+      if (Math.abs(scale - 1) > 0.001) {
+        this.renderer.setViewportStyle("transform", `scale(${scale})`);
+        this.renderer.setViewportStyle("transformOrigin", "50% 50%");
+      } else {
+        this.renderer.setViewportStyle("transform", "");
+      }
+    }
+
+    /** @param {number} index @param {number} [stiffness] */
+    _morphEyes(index, stiffness = 7) {
+      if (index === this.eyeTo && this.eyeMorph.t === 1) return;
+      const t = clamp(this.eyeMorph.x, 0, 1);
+      this.eyeFrom = this.eyeTo;
+      this._fromPolys = this._currentPolys(t);
+      this.eyeTo = index;
+      this.eyeMorph.x = 0;
+      this.eyeMorph.v = 0;
+      this.eyeMorph.t = 1;
+      this.eyeStiffness = stiffness;
+    }
+
+    /** @param {number} t @returns {[import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]]} */
+    _currentPolys(t) {
+      const eyes = DATA.eyes;
+      const from = this._fromPolys || eyes[this.eyeFrom];
+      const to = eyes[this.eyeTo];
+      if (!from || !to) throw new Error("眼形索引超出几何数据范围");
+      return [lerpPoly(from[0], to[0], t), lerpPoly(from[1], to[1], t)];
+    }
+
+    _pn(turns = 1, dir = this.sign()) {
+      if (this.reduceMotion || this.paused || this.spinTurn) return;
+      this.spinTurn = this.actionController.startSpin(turns, dir);
+    }
+
+    /** @param {number} now */
+    _startHop(now) {
+      if (this.reduceMotion || this.paused) return;
+      if (this.hopAt < 0) this.hopAt = now;
+    }
+
+    _cycleShapeTrick() {
+      if (this.reduceMotion || this.paused) return;
+      this.trickCycle = (this.trickCycle + 1) % 5;
+      this.wildWide = false;
+      if (this.trickCycle === 0) this._pn(1);
+      else if (this.trickCycle === 1) {
+        this.wildWide = true;
+        this._pn(2);
+      } else if (this.trickCycle === 2)
+        this.trick = this.actionController.startTrick(
+          "spinBounce",
+          this.reduceMotion,
+          this._now(),
+        );
+      else if (this.trickCycle === 3)
+        this.trick = this.actionController.startTrick(
+          "spinDizzy",
+          this.reduceMotion,
+          this._now(),
+        );
+      else {
+        this._pn(1);
+        this.renderer.burst(16, 0.95, 0.3);
+      }
+    }
+
+    /** @param {number} now */
+    _render(now) {
+      const morphT = clamp(this.eyeMorph.x, 0, 1);
+      this._applyViewportScale();
+      const frame = FRAME.create({
+        ...this.visual.snapshot(),
+        now,
+        badgeColor: this.badgeColor,
+        blink: this.blink,
+        bodyDeformation: this.bodyDeformation,
+        effectSpinRadians: this.effectSpinRadians,
+        extras: this.extras,
+        eyeLids: this.eyeLids,
+        eyeMorph: this.eyeMorph,
+        eyePolys: this._currentPolys(morphT),
+        eyeScale: this.eyeScale,
+        eyeScaleProp: this.eyeScaleProp,
+        faceRoll: this.faceRoll,
+        faceTune: this.faceTune,
+        frontBlend: this.frontBlend,
+        gazeState: requiredState(this.gazeState, "gaze"),
+        gazeTarget: this.pointerTracker.target(),
+        gazeX: this.gazeX,
+        gazeY: this.gazeY,
+        pointer: this.pointerTracker.position(),
+        pointerRaw: this.pointerTracker.raw(),
+        pose: this.pose,
+        poseHome: this.poseHome,
+        prevBelt: this.prevBelt,
+        prevFace: this.prevFace,
+        prevRing: this.prevRing,
+        prevShape: this.prevShape,
+        prevTilt: this.prevTilt,
+        pxW: this.pxW,
+        reduceMotion: this.reduceMotion,
+        shapeName: this.shapeName,
+        shapeSpring: this.shapeSpring,
+        spin: this.spin,
+        squashX: this.squashX,
+        squash: this.squash,
+        tx: this.tx,
+        ty: this.ty,
+        winkAt: this.winkAt,
+        winkEye: this.winkEye,
+      });
+      this.renderer.render(frame);
+    }
+
+    /** @param {number} now @param {boolean} [scheduleNext] */
+    _tick(now, scheduleNext = true) {
+      const dt = Math.min((now - this.last) / 1000, 0.1);
+      this.last = now;
+
+      if (this.paused && scheduleNext) {
+        this._raf = null;
+        return;
+      }
+
+      const mt = (now - this.t0) / 1000;
+      const dtState = (now - this.motionAt) / 1000;
+      const dtFace = (now - this.faceAt) / 1000;
+      const dtParticle = (now - this.visual.particleAt()) / 1000;
+      const motionState = requiredState(this.motionState, "motion");
+      const faceState = requiredState(this.faceState, "face");
+      const expressionState = requiredState(this.expressionState, "expression");
+      const gazeState = requiredState(this.gazeState, "gaze");
+      const controllerOptions = {
+        eyeTo: this.eyeTo,
+        eyeMorphX: this.eyeMorph.x,
+        blinkX: this.blink.x,
+        allowAmbientSpin: this.visual.form() !== "pencil",
+        direction: this.sceneDirection,
+        variant: this.sceneVariant,
+        reduceMotion: this.reduceMotion,
+      };
+      const motion = this.motionController.sample(
+        motionState,
+        mt,
+        dtState,
+        now,
+        this.ctx.motion,
+        controllerOptions,
+      );
+      const expression = this.expressionController.sample(
+        faceState,
+        mt,
+        dtFace,
+        now,
+        this.ctx.expression,
+        { ...controllerOptions, slumpAt: this.ctx.motion.slumpAt },
+      );
+      this.spin.t = motion.rollDeg;
+      this.tx.t = motion.xPx;
+      this.ty.t = motion.yPx;
+      this.squashX.t = motion.squashX;
+      this.squash.t = motion.squashY;
+      this.bodyDeformation = motion.deformation;
+      this.eyeScale.t = expression.eyeScale;
+      this.faceRoll = expression.faceRollDeg;
+      this.eyeLids = expression.eyeLids;
+      if (motion.impulse.yVelocity) this.ty.v += motion.impulse.yVelocity;
+      if (motion.impulse.rollVelocity)
+        this.spin.v += motion.impulse.rollVelocity;
+      if (expression.eyeTarget)
+        this._morphEyes(expression.eyeTarget[0], expression.eyeTarget[1]);
+      if (motion.requestBlink || expression.requestBlink)
+        this.eyeController.queueBlink(this.blinkQueue, now);
+      if (motion.impulse.spin) this._pn(...motion.impulse.spin);
+      for (const event of this.choreographyController.sample(
+        this.choreographyState,
+        dtState,
+        this.ctx.choreography,
+        { direction: this.sceneDirection },
+      )) {
+        if (event.channel === "particles" && event.type === "burst") {
+          this.renderer.burst(event.count, event.strength);
+        } else if (event.channel === "action") {
+          if (event.type === "hop") {
+            this._startHop(now);
+            continue;
+          }
+          if (event.type === "spin") {
+            this._pn(event.turns, event.direction);
+            continue;
+          }
+          const trickKind =
+            event.type === "spin-bounce"
+              ? "spinBounce"
+              : event.type === "spin-dizzy"
+                ? "spinDizzy"
+                : null;
+          if (
+            trickKind &&
+            !this.reduceMotion &&
+            !this.spinTurn &&
+            !this.trick &&
+            this.hopAt < 0
+          ) {
+            this.trick = this.actionController.startTrick(
+              trickKind,
+              this.reduceMotion,
+              now,
+              event.direction,
+            );
+          }
+        }
+      }
+
+      this.visual.prepare(now, this.reduceMotion);
+
+      if (
+        this.celebrateAt !== null &&
+        now >= this.celebrateAt &&
+        !this.trick &&
+        !this.spinTurn
+      ) {
+        this.trick = this.actionController.startTrick(
+          "spinWild",
+          this.reduceMotion,
+          now,
+        );
+        this.celebrateAt = now + 6200;
+      }
+
+      const tf = this.actionController.sampleTrick(this.trick, now);
+      if (tf.requestHop) this._startHop(now);
+      if (tf.done) this.trick = null;
+      let hopY = this.actionController.sampleHop(this.hopAt, now);
+      if (hopY == null) {
+        this.hopAt = -1;
+        hopY = 0;
+      }
+      let turnRadians = tf.turnRadians;
+      if (this.spinTurn) {
+        turnRadians = (turnRadians ?? 0) + this.spinTurn.x;
+        if (this.actionController.spinSettled(this.spinTurn))
+          this.spinTurn = null;
+      }
+      this.extras = { ...tf, turnRadians, hopYPx: hopY };
+
+      if (this.extras.eyeScale != null)
+        this.eyeScale.t = this.extras.eyeScale;
+
+      if (
+        expressionState !== "waking" &&
+        expressionState !== "sleeping" &&
+        now >= this.eyeUntil
+      ) {
+        const list = eyePlaylist(expressionState);
+        this.eyeIdx =
+          (this.eyeIdx + 1 + Math.floor(this.rand(0, list.length - 1))) %
+          list.length;
+        const stiff =
+          expressionState === "searching" || expressionState === "excited"
+            ? 10
+            : 6;
+        const nextEye = list[this.eyeIdx] ?? list[0];
+        this._morphEyes(nextEye, stiff);
+        this.eyeUntil = now + this.rand(...eyeHold(expressionState));
+      }
+
+      const blinkCadence = BLINK_MS[expressionState];
+      if (blinkCadence && now >= this.blinkUntil) {
+        this.eyeController.queueBlink(this.blinkQueue, now);
+        this.blinkUntil = now + this.rand(...blinkCadence);
+      }
+      const blinkKey = this.eyeController.consumeBlink(this.blinkQueue, now);
+      this.blink.t =
+        blinkKey ??
+        (this.blinkQueue.length
+          ? this.blink.t
+          : (this.extras.lidOverride ?? expression.restLid));
+
+      if (now >= this.gazeUntil) {
+        const gz = this.gazeController.next(
+          gazeState,
+          this.sceneDirection,
+        );
+        this.gazeX.t = gz.x;
+        this.gazeY.t = gz.y;
+        this.gazeUntil = now + this.rand(...gz.hold);
+      }
+
+      if (WINK_STATES.has(expressionState) && now >= this.winkUntil) {
+        this.winkAt = now;
+        this.winkEye = this.random() < 0.5 ? 0 : 1;
+        this.winkUntil = now + this.rand(4500, 10000);
+      }
+
+      const humming = this.visual.particles() === "wide-spin-belts";
+      const loading = this.visual.particles() === "spin-belts";
+      if ((humming || loading) && !this.reduceMotion) {
+        const Zt = dtParticle;
+        const dn = loading ? 3 : 1.6;
+        const on =
+          Zt < 0.5
+            ? 7 * K2(Zt / 0.5)
+            : Zt < 1.3
+              ? 7 + (dn - 7) * K2((Zt - 0.5) / 0.8)
+              : dn + 0.3 * Math.sin(Zt * 0.5);
+        this.effectSpinRadians += on * dt;
+      }
+
+      if (this.reduceMotion) {
+        this._morphEyes(eyePlaylist(expressionState)[0]);
+        resetSpring(this.frontBlend, this.frontBlend.t);
+        this.spin.t = 0;
+        this.tx.t = 0;
+        this.ty.t = 0;
+        this.squashX.t = 1;
+        this.squash.t = 1;
+        this.bodyDeformation = null;
+        this.blink.t = 1;
+        this.eyeScale.t = 1;
+      }
+
+      const nSteps = springSteps(dt);
+      const step = dt / nSteps;
+      for (let i = 0; i < nSteps; i++) {
+        stepSpring(this.eyeMorph, this.eyeStiffness, 1, step);
+        stepSpring(this.frontBlend, ...SPRINGS.front, step);
+        if (this.spinTurn)
+          stepSpring(this.spinTurn, ...SPRINGS.spinTurn, step);
+        stepSpring(this.spin, ...SPRINGS.spin, step);
+        stepSpring(this.tx, ...SPRINGS.x, step);
+        stepSpring(this.ty, ...SPRINGS.y, step);
+        stepSpring(this.squashX, ...SPRINGS.squash, step);
+        stepSpring(this.squash, ...SPRINGS.squash, step);
+        stepSpring(this.blink, ...SPRINGS.blink, step);
+        stepSpring(this.eyeScale, ...SPRINGS.eyeScale, step);
+        stepSpring(this.gazeX, ...SPRINGS.gazeX, step);
+        stepSpring(this.gazeY, ...SPRINGS.gazeY, step);
+        stepSpring(this.shapeSpring, ...SPRINGS.shape, step);
+        this.visual.integrate(step);
+      }
+      this.visual.finishFrame(this.reduceMotion);
+
+      let spinAngle = 0;
+      if (this.spinTurn) spinAngle = this.spinTurn.x;
+      else if (this.extras.turnRadians != null)
+        spinAngle = this.extras.turnRadians;
+      else if (humming || loading) spinAngle = this.effectSpinRadians;
+      if (now - this.pxAt > 500) {
+        const w = this.renderer.bounds().width;
+        if (w > 0) {
+          this.pxW = w;
+          this.partScale = clamp(Math.pow(340 / w, 0.7), 1, 2.6);
+        }
+        this.pxAt = now;
+      }
+      this.renderer.updateParticles(now, dt, {
+        spinAngle,
+        emitTrails:
+          this.spinTurn !== null || this.trick !== null || humming || loading,
+        sizeScale: this.partScale,
+        wideStyle:
+          this.trick?.kind === "spinWild" || this.wildWide || humming,
+        sustainBelts: humming || loading,
+      });
+
+      this.pointerTracker.update(now, requiredState(this.gazeState, "gaze"));
+      this._render(now);
+      this._raf =
+        !scheduleNext || this.paused || this.destroyed
+          ? null
+          : this.clock.requestAnimationFrame((t) => this._tick(t));
+    }
   }
 
-  g.O_PET_RUNTIME = Object.freeze({ create });
-})(globalThis[Symbol.for("o-pet.renderer")]);
+  return new OPetCharacter(options);
+}
+
+export { create };

@@ -45,16 +45,18 @@ cargo run --release -- --show-action happy
 
 渲染器使用单向依赖和显式组合：
 
-- `renderer/catalog/` 保存动作名称、场景预设和有限序列。场景由 `motion`、`face`、`expression`、`gaze`、`form`、`decoration`、`particles`、`camera` 和 `badge` 九个固定通道组成，并可独立声明入场编排。共享控制通道的场景不会自动继承彼此的入场编排。
+- `renderer/catalog/` 保存动作名称、场景预设和有限序列。场景由 `motion`、`face`、`expression`、`gaze`、`shape`、`form`、`decoration`、`particles`、`camera` 和 `badge` 十个固定通道组成，并可独立声明入场编排。共享控制通道的场景不会自动继承彼此的入场编排。
 - `renderer/behaviors/` 将 Agent 活动、空闲深度、Cue 和用户交互转换为时间线。各行为模块只依赖场景目录、随机数和时间线端口。
-- `renderer/runtime/` 提供统一动画时钟、可取消时间线和场景呈现端口。统一时钟同时冻结定时器、动画帧和动画时间。
+- `renderer/runtime/` 提供 Host 状态生命周期、统一动画时钟、可取消时间线和场景呈现端口。状态生命周期集中停止旧导演并管理活动切换计时器。统一时钟同时冻结定时器、动画帧和动画时间。
 - `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。`visual-channels.js` 独立管理形变、装饰、粒子、相机和徽标的过渡状态。
 - `renderer/view/` 从帧模型生成 SVG。视图模块拥有 SVG 节点、特效和粒子资源，不读取动画运行时的内部对象。
 - `renderer/adapters/` 管理浏览器指针、原生拖动协议和动态偏好。`renderer/host.js` 是唯一组合根，只处理外部事件、行为优先级和销毁顺序。
 
 Rust 使用 `rust-embed` 将 `renderer/` 嵌入可执行文件，并通过内部 `o-pet://` 协议提供 HTML、CSS、JavaScript 和 JSON 资源。渲染页面不读取安装目录或外部网络资源。
 
-内部模块放在页面脚本的私有作用域中，浏览器全局只暴露 `window.oPet`。构造动画运行时所需的时钟、随机数、文档和渲染端口均由组合根注入。
+渲染器使用标准 ESM 静态导入。`bootstrap.js` 只启动页面组合根，浏览器全局只暴露 `window.oPet`。构造动画运行时所需的时钟、随机数、文档和渲染端口均由组合根注入。测试直接导入模块。组合根行为测试只替换角色运行时端口。
+
+`renderer/types.js` 定义活动、Cue、场景、时间线、调度器、角色端口和只读帧模型等共享契约。组合根、适配器、行为、目录、时间线、帧引擎和 SVG 入口使用严格 JavaScript 检查。底层几何、特效、眼睛和粒子公式仍由确定性视觉基线保护。
 
 `renderer/view/geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。
 

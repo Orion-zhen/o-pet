@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
-import vm from "node:vm";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import {
-	choreographySource, expressionSource, gazeSource, geometryEngineSource,
-	geometrySource, mathSource, motionSource, presetsSource, sequencesSource, tablesSource,
-} from "./sources.js";
-
-interface VisualPreset {
-	channels: Record<string, { id: string | null }>;
-	choreography?: string | null;
-}
+import * as presetsModule from "../../renderer/catalog/presets.js";
+import { create as createSequences } from "../../renderer/catalog/sequences.js";
+import { create as createTables } from "../../renderer/catalog/tables.js";
+import { validate } from "../../renderer/catalog/validation.js";
+import { create as createChoreographyController } from "../../renderer/engine/channels/choreography.js";
+import { create as createExpression } from "../../renderer/engine/channels/expression.js";
+import { create as createGaze } from "../../renderer/engine/channels/gaze.js";
+import { create as createMotion } from "../../renderer/engine/channels/motion.js";
+import { create as createMath } from "../../renderer/engine/math.js";
+import geometryData from "../../renderer/view/geometry-data.js";
+import { create as createGeometry } from "../../renderer/view/geometry.js";
 
 interface ChoreographyController {
 	sample(
@@ -21,18 +23,8 @@ interface ChoreographyController {
 }
 
 function createChoreography(random: number): ChoreographyController {
-	const windowStub: Record<string, unknown> = {};
-	windowStub.window = windowStub;
-	const deterministicMath = Object.create(Math) as Math;
-	deterministicMath.random = () => random;
-	vm.runInNewContext(mathSource, { Math: deterministicMath, window: windowStub });
-	vm.runInNewContext(choreographySource, { Math: deterministicMath, window: windowStub });
-	const math = (windowStub.OPET_MATH as {
-		create(source: () => number): unknown;
-	}).create(deterministicMath.random);
-	return (windowStub.OPET_CHOREOGRAPHY as {
-		create(dependencies: unknown): ChoreographyController;
-	}).create(math);
+	const math = createMath(() => random);
+	return createChoreographyController(math);
 }
 
 const freshChoreographyContext = (): Record<string, unknown> => ({
@@ -44,38 +36,10 @@ const freshChoreographyContext = (): Record<string, unknown> => ({
 
 describe("渲染器目录与控制通道", () => {
 	it("内嵌全部眼睛和身形数据", () => {
-		const windowStub: Record<string, unknown> = {};
-		windowStub.window = windowStub;
-		vm.runInNewContext(geometrySource, windowStub);
-		vm.runInNewContext(mathSource, windowStub);
-		vm.runInNewContext(geometryEngineSource, windowStub);
-		vm.runInNewContext(tablesSource, windowStub);
-		const geometry = windowStub.OPET_GEO as {
-			Re: number;
-			eyes: Array<Array<Array<[number, number]>>>;
-			shapes: Record<string, unknown>;
-		};
-		const math = (windowStub.OPET_MATH as { create(random: () => number): unknown }).create(() => 0.5);
-		const geometryEngine = (windowStub.OPET_GEOMETRY as {
-			create(dependencies: Record<string, unknown>): {
-				deformRing(
-					ring: Array<[number, number]>,
-					center: number,
-					deformation: {
-						waveAmount: number;
-						wavePhase: number;
-						bumps: Array<{ angle: number; amount: number; width: number }>;
-					},
-				): Array<[number, number]>;
-				shapeModel(name: string): { ring: Array<[number, number]> };
-			};
-		}).create({ data: geometry, math });
-		const tables = (windowStub.OPET_TABLES as {
-			create(): {
-				BLINK_MS: Record<string, [number, number] | null>;
-				EYE_PLAYLIST: Record<string, number[]>;
-			};
-		}).create();
+		const geometry = geometryData;
+		const math = createMath(() => 0.5);
+		const geometryEngine = createGeometry({ data: geometry, math });
+		const tables = createTables();
 		expect(tables.EYE_PLAYLIST.winking).toEqual([1]);
 		expect(tables.EYE_PLAYLIST.front).toEqual([25, 26]);
 		expect(tables.BLINK_MS.winking).toBeNull();
@@ -105,7 +69,7 @@ describe("渲染器目录与控制通道", () => {
 			wavePhase: 0,
 			bumps: [],
 		});
-		const radii = deformedRing.map(([x, y]) =>
+		const radii = deformedRing.map(([x, y]: [number, number]) =>
 			Math.hypot(x - geometry.Re, y - geometry.Re)
 		);
 		expect(radii[0]).toBeGreaterThan(102);
@@ -120,13 +84,15 @@ describe("渲染器目录与控制通道", () => {
 			wavePhase: 0,
 			bumps: [{ angle: 0, amount: 9, width: 0.25 }],
 		});
-		const bumpedRadii = bumpedRing.map(([x, y]) =>
+		const bumpedRadii = bumpedRing.map(([x, y]: [number, number]) =>
 			Math.hypot(x - geometry.Re, y - geometry.Re)
 		);
 		expect(bumpedRadii).toEqual([100, 109, 100]);
 		const ringSignature = Object.keys(geometry.shapes).map((name) => [
 			name,
-			geometryEngine.shapeModel(name).ring.map((point) => point.map((value) => value.toFixed(9))),
+			geometryEngine.shapeModel(name).ring.map((point: [number, number]) =>
+				point.map((value: number) => value.toFixed(9))
+			),
 		]);
 		expect(createHash("sha256").update(JSON.stringify(ringSignature)).digest("hex")).toBe(
 			"bbe70f8567463f0b904727f9b4a8631438598a1e345525b3d8a3875efae788ed",
@@ -134,25 +100,8 @@ describe("渲染器目录与控制通道", () => {
 	});
 
 	it("将场景拆为固定且互不重叠的控制通道", () => {
-		const windowStub: Record<string, unknown> = {};
-		windowStub.window = windowStub;
-		vm.runInNewContext(presetsSource, windowStub);
-		vm.runInNewContext(sequencesSource, windowStub);
-		const presets = windowStub.OPET_PRESETS as {
-			fromState(state: string): VisualPreset;
-			replaceChannels(
-				base: VisualPreset,
-				replacement: VisualPreset,
-				channels: string[],
-			): VisualPreset;
-			resolve(preset: VisualPreset): { choreography: string | null };
-			scenes: Record<string, VisualPreset>;
-		};
-		const sequences = (windowStub.OPET_SEQUENCES as {
-			create(presets: unknown): {
-				cues: Record<string, Array<{ duration: number; preserveEffect?: boolean }>>;
-			};
-		}).create(presets);
+		const presets = presetsModule;
+		const sequences = createSequences(presets);
 		const expectedChannels = [
 			"motion", "face", "expression", "gaze", "shape", "form",
 			"decoration", "particles", "camera", "badge",
@@ -206,11 +155,31 @@ describe("渲染器目录与控制通道", () => {
 		expect(sequences.cues.error_repeated?.[0]?.preserveEffect).toBe(true);
 		for (const cue of [
 			"completed_quick", "completed_normal", "completed_hard", "run_failed",
-		]) {
+		] as const) {
 			expect(sequences.cues[cue]?.at(-1)?.duration).toBe(5000);
 		}
 	});
 
+
+	it("全部可预览动作都能解析为完整控制通道", () => {
+		const source: unknown = JSON.parse(readFileSync(
+			new URL("../../renderer/catalog/action-groups.json", import.meta.url),
+			"utf8",
+		));
+		if (!Array.isArray(source)) throw new Error("动作目录必须是数组");
+		const actionNames = source.flatMap((group: unknown): string[] => {
+			if (typeof group !== "object" || group === null)
+				throw new Error("动作分组必须是对象");
+			const states: unknown = Reflect.get(group, "states");
+			if (!Array.isArray(states) || !states.every((state) => typeof state === "string"))
+				throw new Error("动作分组 states 必须是字符串数组");
+			return states;
+		});
+
+		const tables = createTables();
+		expect(() => validate(actionNames, presetsModule, tables)).not.toThrow();
+		expect(() => validate([...actionNames, "missing-action"], presetsModule, tables)).toThrow();
+	});
 
 	it("happy 进入后只触发一次弹跳", () => {
 		const choreography = createChoreography(0.5);
@@ -248,15 +217,7 @@ describe("渲染器目录与控制通道", () => {
 	});
 
 	it("角色姿态为 front 和减少动态提供独立视觉语义", () => {
-		const windowStub: Record<string, unknown> = {};
-		windowStub.window = windowStub;
-		const deterministicMath = Object.create(Math) as Math;
-		deterministicMath.random = () => 0.5;
-		vm.runInNewContext(mathSource, { Math: deterministicMath, window: windowStub });
-		vm.runInNewContext(tablesSource, { Math: deterministicMath, window: windowStub });
-		vm.runInNewContext(motionSource, { Math: deterministicMath, window: windowStub });
-		vm.runInNewContext(expressionSource, { Math: deterministicMath, window: windowStub });
-		vm.runInNewContext(gazeSource, { Math: deterministicMath, window: windowStub });
+		const deterministicRandom = (): number => 0.5;
 		type MotionController = {
 			sample(
 				state: string,
@@ -277,20 +238,11 @@ describe("渲染器目录与控制通道", () => {
 				options: Record<string, unknown>,
 			): { faceRollDeg: number };
 		};
-		const mathModule = windowStub.OPET_MATH as { create(random: () => number): unknown };
-		const tables = (windowStub.OPET_TABLES as {
-			create(): unknown;
-		}).create();
-		const math = mathModule.create(deterministicMath.random);
-		const motion = (windowStub.OPET_MOTION as {
-			create(math: unknown, tables: unknown): MotionController;
-		}).create(math, tables);
-		const expression = (windowStub.OPET_EXPRESSION as {
-			create(math: unknown, tables: unknown): ExpressionController;
-		}).create(math, tables);
-		const gaze = (windowStub.OPET_GAZE as {
-			create(math: unknown): { next(state: string): { x: number; y: number } };
-		}).create(math);
+		const tables = createTables();
+		const math = createMath(deterministicRandom);
+		const motion = createMotion(math, tables) as MotionController;
+		const expression = createExpression(math, tables) as ExpressionController;
+		const gaze = createGaze(math);
 		const context = { quizzicalBlinked: false };
 		const moving = motion.sample("quizzical", 1, 0.9, 900, context, { direction: 1 });
 		const movingFace = expression.sample("quizzical", 1, 0.9, 900, context, { direction: 1 });

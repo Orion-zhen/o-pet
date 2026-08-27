@@ -470,6 +470,22 @@ describe("渲染器视觉运行时", () => {
 		harness.character.destroy();
 	});
 
+	it("提交只读帧快照且后续动画帧不会修改旧快照", () => {
+		const harness = createVisualHarness();
+		const initial = harness.latestFrame();
+		const initialSpin = initial.spin.x;
+
+		expect(Object.isFrozen(initial)).toBe(true);
+		expect(Object.isFrozen(initial.spin)).toBe(true);
+		expect(Object.isFrozen(initial.pointer)).toBe(true);
+		expect(Object.isFrozen(initial.extras)).toBe(true);
+
+		harness.frame(16);
+		expect(harness.latestFrame()).not.toBe(initial);
+		expect(initial.spin.x).toBe(initialSpin);
+		harness.character.destroy();
+	});
+
 	it("关键 SVG 帧与重构前的视觉基线一致", () => {
 		const harness = createVisualHarness();
 		const hashes: Array<[string, string]> = [];
@@ -559,6 +575,21 @@ describe("渲染器视觉运行时", () => {
 		expect(svg.children.length).toBeGreaterThan(0);
 		api.destroy();
 		visual.character.destroy();
+	});
+
+	it("暂停期间切换场景后可渲染一次且不恢复帧循环", () => {
+		const harness = createVisualHarness();
+		harness.character.playPreset(harness.presets.scenes.happy);
+		for (let time = 16; time <= 400; time += 16) harness.frame(time);
+		harness.character.setPaused(true);
+		const before = svgHash(harness.svg);
+
+		harness.character.setPreset(harness.presets.scenes.dragging);
+		harness.character.renderOnce();
+
+		expect(svgHash(harness.svg)).not.toBe(before);
+		expect(harness.pendingFrames()).toBe(0);
+		harness.character.destroy();
 	});
 
 	it("动画运行时销毁后不能被恢复操作重新启动", () => {

@@ -1,356 +1,373 @@
+// @ts-check
 /* o-pet 组合根。只协调行为优先级、外部事件和模块生命周期。 */
-(function (g) {
-  const STARTUP_MS = 2000;
-  const WAKING_MS = 1800;
-  const ACTIVITY_SETTLE_MS = 350;
-  const ACTION_PLAY_MS = 3000;
-  const ACTION_PAUSE_MS = 1000;
+import * as O_PET_POINTER from "./adapters/pointer.js";
+import * as O_PET_PREFERENCES from "./adapters/preferences.js";
+import * as O_PET_ACTIVITIES from "./behaviors/activities.js";
+import * as O_PET_CUES from "./behaviors/cues.js";
+import * as O_PET_IDLE from "./behaviors/idle.js";
+import * as O_PET_INTERACTION from "./behaviors/interaction.js";
+import * as OPET_PRESETS from "./catalog/presets.js";
+import * as OPET_SEQUENCES from "./catalog/sequences.js";
+import * as OPET_TABLES from "./catalog/tables.js";
+import * as OPET_ACTIONS from "./engine/actions.js";
+import * as OPET_CHOREOGRAPHY from "./engine/channels/choreography.js";
+import * as OPET_EXPRESSION from "./engine/channels/expression.js";
+import * as OPET_GAZE from "./engine/channels/gaze.js";
+import * as OPET_MOTION from "./engine/channels/motion.js";
+import * as OPET_MATH from "./engine/math.js";
+import * as O_PET_FRAME from "./engine/frame.js";
+import * as OPET_POINTER_TRACKER from "./engine/pointer-tracker.js";
+import * as O_PET_RUNTIME from "./engine/runtime.js";
+import * as O_PET_VISUAL_CHANNELS from "./engine/visual-channels.js";
+import * as O_PET_HOST_STATE from "./runtime/host-state.js";
+import * as O_PET_PRESENTER from "./runtime/presenter.js";
+import * as O_PET_SCHEDULER from "./runtime/scheduler.js";
+import * as O_PET_TIMELINE from "./runtime/timeline.js";
+import * as OPET_EFFECTS from "./view/effects.js";
+import * as OPET_EYES from "./view/eyes.js";
+import OPET_GEO from "./view/geometry-data.js";
+import * as OPET_GEOMETRY from "./view/geometry.js";
+import * as OPET_PARTICLES from "./view/particles.js";
+import * as OPET_RENDER from "./view/svg.js";
 
-  function create(options) {
-    const doc = options.document;
-    const timerClock = options.clock;
-    const frameClock = options.frameClock;
-    const rawNow = options.now;
-    const random = options.random;
-    const motionQuery = options.motionQuery;
-    const viewportWidth = options.viewportWidth;
-    const scheduler = g.O_PET_SCHEDULER.create({
-      timerClock,
-      frameClock,
-      now: rawNow,
-    });
-    const now = scheduler.now;
-    const presets = g.OPET_PRESETS;
-    const tables = g.OPET_TABLES.create();
-    const scenes = presets.scenes;
-    const sequences = g.OPET_SEQUENCES.create(presets);
-    const math = g.OPET_MATH.create(random);
-    const geometry = g.OPET_GEOMETRY.create({ data: g.OPET_GEO, math });
-    const effects = g.OPET_EFFECTS.create({
-      data: g.OPET_GEO,
+const STARTUP_MS = 2000;
+const WAKING_MS = 1800;
+const ACTIVITY_SETTLE_MS = 350;
+const ACTION_PLAY_MS = 3000;
+const ACTION_PAUSE_MS = 1000;
+
+/**
+ * @param {import("./types.js").RendererOptions} options
+ * @param {import("./types.js").RendererOverrides} [overrides]
+ * @returns {import("./types.js").RendererApi}
+ */
+function create(options, overrides = {}) {
+  const runtimeModule = overrides.runtime ?? O_PET_RUNTIME;
+  const doc = options.document;
+  const timerClock = options.clock;
+  const frameClock = options.frameClock;
+  const rawNow = options.now;
+  const random = options.random;
+  const motionQuery = options.motionQuery;
+  const viewportWidth = options.viewportWidth;
+  const scheduler = O_PET_SCHEDULER.create({
+    timerClock,
+    frameClock,
+    now: rawNow,
+  });
+  const now = scheduler.now;
+  const presets = OPET_PRESETS;
+  const tables = OPET_TABLES.create();
+  const scenes = presets.scenes;
+  const sequences = OPET_SEQUENCES.create(presets);
+  const math = OPET_MATH.create(random);
+  const geometry = OPET_GEOMETRY.create({ data: OPET_GEO, math });
+  const effects = OPET_EFFECTS.create({
+    data: OPET_GEO,
+    math,
+    tables,
+  });
+  const eyes = OPET_EYES.create({ geometry, math }, random);
+  const character = runtimeModule.create(
+    {
+      actions: OPET_ACTIONS,
+      choreography: OPET_CHOREOGRAPHY,
+      data: OPET_GEO,
+      effects,
+      expression: OPET_EXPRESSION,
+      frame: O_PET_FRAME,
+      eyes,
+      gaze: OPET_GAZE,
+      geometry,
       math,
+      motion: OPET_MOTION,
+      presets,
+      pointerTracker: OPET_POINTER_TRACKER,
       tables,
-    });
-    const eyes = g.OPET_EYES.create({ geometry, math }, random);
-    const character = g.O_PET_RUNTIME.create(
-      {
-        actions: g.OPET_ACTIONS,
-        choreography: g.OPET_CHOREOGRAPHY,
-        data: g.OPET_GEO,
-        effects,
-        expression: g.OPET_EXPRESSION,
-        eyes,
-        gaze: g.OPET_GAZE,
-        geometry,
-        math,
-        motion: g.OPET_MOTION,
-        presets,
-        tables,
-        visualChannels: g.O_PET_VISUAL_CHANNELS,
-      },
-      {
-        clock: scheduler,
-        createRenderer: () =>
-          g.OPET_RENDER.create(
-            {
-              data: g.OPET_GEO,
-              effects,
-              eyes,
-              geometry,
-              math,
-              particles: g.OPET_PARTICLES,
-              tables,
-            },
-            {
-              document: doc,
-              initialShape: "blob",
-              rand: math.rand,
-              random,
-              svg: options.svg,
-            },
-          ),
-        random,
-      },
-    );
-    const presenter = g.O_PET_PRESENTER.create({
-      character,
-      initialScene: scenes.spawning,
-      presets,
-    });
-    const timeline = g.O_PET_TIMELINE.create({
-      scheduler,
-      enterStep: presenter.enterStep,
-    });
-    const activities = g.O_PET_ACTIVITIES.create({
-      now,
+      visualChannels: O_PET_VISUAL_CHANNELS,
+    },
+    {
+      clock: scheduler,
+      createRenderer: () =>
+        OPET_RENDER.create(
+          {
+            data: OPET_GEO,
+            effects,
+            eyes,
+            geometry,
+            math,
+            particles: OPET_PARTICLES,
+            tables,
+          },
+          {
+            document: doc,
+            initialShape: "blob",
+            rand: math.rand,
+            random,
+            svg: options.svg,
+          },
+        ),
       random,
-      scenes,
-      timeline,
-    });
-    const idle = g.O_PET_IDLE.create({
-      now,
-      presets,
-      random,
-      scenes,
-      timeline,
-    });
-    const cues = g.O_PET_CUES.create({
-      sequences: sequences.cues,
-      timeline,
-      onFinished: enterActivity,
-    });
-    const preferences = g.O_PET_PREFERENCES.create({
-      character,
-      motionQuery,
-    });
+    },
+  );
+  const presenter = O_PET_PRESENTER.create({
+    character,
+    initialScene: scenes.spawning,
+    presets,
+  });
+  const timeline = O_PET_TIMELINE.create({
+    scheduler,
+    enterStep: presenter.enterStep,
+  });
+  const activities = O_PET_ACTIVITIES.create({
+    now,
+    random,
+    scenes,
+    timeline,
+  });
+  const idle = O_PET_IDLE.create({
+    now,
+    presets,
+    random,
+    scenes,
+    timeline,
+  });
+  const cues = O_PET_CUES.create({
+    sequences: sequences.cues,
+    timeline,
+    onFinished: enterActivity,
+  });
+  const hostState = O_PET_HOST_STATE.create({
+    activities,
+    cues,
+    idle,
+    scheduler,
+    timeline,
+  });
+  const preferences = O_PET_PREFERENCES.create({
+    character,
+    motionQuery,
+  });
 
-    let activity = "idle";
-    let activityAt = now();
-    let state = Object.freeze({ kind: "startup" });
-    let wakeBeforeActivity = false;
-    let switchTimer = null;
-    let destroyed = false;
+  /** @type {import("./types.js").Activity} */
+  let activity = "idle";
+  let activityAt = now();
+  let wakeBeforeActivity = false;
+  let destroyed = false;
 
-    function setState(kind) {
-      state = Object.freeze({ kind });
+  function enterActivity() {
+    if (destroyed) return;
+    presenter.setGazeTarget(null);
+    wakeBeforeActivity = false;
+    if (activity === "idle") {
+      hostState.transition("idle");
+      idle.start();
+    } else {
+      hostState.transition("activity");
+      activities.start(activity, activityAt);
     }
+  }
 
-    function clearSwitch() {
-      if (switchTimer !== null) scheduler.clearTimeout(switchTimer);
-      switchTimer = null;
-    }
+  function finishProtected() {
+    if (destroyed) return;
+    if (cues.playPending()) hostState.transition("cue");
+    else enterActivity();
+  }
 
-    function stopDirector() {
-      if (state.kind === "idle") idle.stop();
-      else if (state.kind === "activity") activities.stop();
-      else if (state.kind === "cue") cues.cancel(false);
-      else if (state.kind === "interaction") timeline.cancel("interaction");
-    }
-
-    function enterActivity() {
-      if (destroyed) return;
-      clearSwitch();
-      presenter.setGazeTarget(null);
-      wakeBeforeActivity = false;
-      if (activity === "idle") {
-        setState("idle");
-        idle.start();
-      } else {
-        setState("activity");
-        activities.start(activity, activityAt);
-      }
-    }
-
-    function finishProtected() {
-      if (destroyed) return;
-      if (cues.playPending()) setState("cue");
-      else enterActivity();
-    }
-
-    function playWaking() {
-      clearSwitch();
-      stopDirector();
-      presenter.setGazeTarget(null);
-      setState("waking");
-      timeline.play(
-        "protected",
-        [{ scene: scenes.waking, duration: WAKING_MS }],
-        {
-          onComplete: finishProtected,
-        },
-      );
-    }
-
-    function requestCue(cue) {
-      if (cue === "progress") {
-        activities.progress();
-        return;
-      }
-      if (state.kind === "startup" || state.kind === "waking") {
-        cues.request(cue, true);
-        return;
-      }
-      if (state.kind === "cue") {
-        cues.request(cue);
-        return;
-      }
-      clearSwitch();
-      stopDirector();
-      interaction.cancel();
-      presenter.clearOverride();
-      presenter.setGazeTarget(null);
-      setState("cue");
-      cues.request(cue);
-    }
-
-    function scheduleActivitySwitch() {
-      clearSwitch();
-      stopDirector();
-      setState("switching");
-      switchTimer = scheduler.setTimeout(() => {
-        switchTimer = null;
-        if (activity !== "idle" && wakeBeforeActivity) playWaking();
-        else enterActivity();
-      }, ACTIVITY_SETTLE_MS);
-    }
-
-    function update(next) {
-      if (destroyed) return;
-      const cue = next.cue;
-
-      const previousActivity = activity;
-      const changed = next.activity !== activity;
-      if (changed) {
-        if (previousActivity === "idle" && next.activity !== "idle")
-          wakeBeforeActivity = idle.leave();
-        activity = next.activity;
-        activityAt = now();
-        if (activity === "idle") idle.reset(activityAt);
-        if (activity !== "terminal") activities.resetProgress();
-        if (
-          activity !== "idle" &&
-          state.kind === "cue" &&
-          cues.isCompletion(cues.current())
-        ) {
-          cues.cancel();
-          setState("switching");
-        }
-        if (state.kind === "interaction") interaction.cancel();
-      }
-
-      if (activity === "awaiting_approval" && cue === undefined) {
-        interaction.cancel();
-        enterActivity();
-        return;
-      }
-      if (cue !== undefined) {
-        if (wakeBeforeActivity && activity !== "idle") {
-          cues.request(cue, true);
-          playWaking();
-        } else {
-          requestCue(cue);
-        }
-        return;
-      }
-      if (
-        state.kind === "startup" ||
-        state.kind === "waking" ||
-        state.kind === "cue"
-      )
-        return;
-      if (changed) scheduleActivitySwitch();
-    }
-
-    function showAction(name) {
-      if (destroyed) return;
-      clearSwitch();
-      stopDirector();
-      cues.cancel();
-      interaction.cancel();
-      presenter.clearOverride();
-      presenter.setGazeTarget(null);
-      setState("preview");
-      timeline.play(
-        "preview",
-        [
-          { state: name, duration: ACTION_PLAY_MS },
-          { pause: true, duration: ACTION_PAUSE_MS },
-        ],
-        { loop: true },
-      );
-    }
-
-    const interaction = g.O_PET_INTERACTION.create({
-      getActivity: () => activity,
-      idle,
-      interrupt() {
-        clearSwitch();
-        stopDirector();
-        cues.cancel();
-        setState("interaction");
-      },
-      now,
-      presenter,
-      presets,
-      returnToActivity: enterActivity,
-      scenes,
-      sequences,
-      timeline,
-      viewportWidth,
-    });
-
-    function onPointerStart(contact) {
-      const protectedMode =
-        state.kind === "startup" ||
-        state.kind === "waking" ||
-        state.kind === "preview";
-      interaction.start(contact, protectedMode);
-    }
-
-    function onPointerEnd() {
-      interaction.end();
-    }
-
-    function onPointerEnter() {
-      if (
-        activity === "idle" &&
-        !interaction.isActive() &&
-        state.kind === "idle"
-      )
-        idle.hover();
-    }
-
-    function onVisibilityChange() {
-      if (doc.hidden) scheduler.pause("hidden");
-      else scheduler.resume("hidden");
-    }
-
-    const pointer = g.O_PET_POINTER.create({
-      document: doc,
-      frameClock,
-      onEnd: onPointerEnd,
-      onEnter: onPointerEnter,
-      onStart: onPointerStart,
-      onTrack: (point) => character.setPointerPosition(point),
-      postDrag: options.postDrag,
-      target: options.pointerTarget,
-    });
-
-    function destroy() {
-      if (destroyed) return;
-      destroyed = true;
-      clearSwitch();
-      doc.removeEventListener("visibilitychange", onVisibilityChange);
-      pointer.destroy();
-      preferences.destroy();
-      cues.cancel();
-      idle.stop();
-      activities.stop();
-      interaction.cancel();
-      timeline.destroy();
-      presenter.destroy();
-      character.destroy();
-      scheduler.destroy();
-    }
-
-    idle.reset(activityAt);
-    doc.addEventListener("visibilitychange", onVisibilityChange);
-    if (doc.hidden) scheduler.pause("hidden");
+  function playWaking() {
+    presenter.setGazeTarget(null);
+    hostState.transition("waking");
     timeline.play(
       "protected",
-      [{ scene: scenes.spawning, duration: STARTUP_MS }],
+      [{ scene: scenes.waking, duration: WAKING_MS }],
       {
         onComplete: finishProtected,
       },
     );
+  }
 
-    return Object.freeze({
-      destroy,
-      setPreferences: preferences.set,
-      showAction,
-      update,
+  /** @param {import("./types.js").Cue} cue */
+  function requestCue(cue) {
+    if (cue === "progress") {
+      activities.progress();
+      return;
+    }
+    if (hostState.is("startup") || hostState.is("waking")) {
+      cues.request(cue, true);
+      return;
+    }
+    if (hostState.is("cue")) {
+      cues.request(cue);
+      return;
+    }
+    interaction.cancel();
+    presenter.clearOverride();
+    presenter.setGazeTarget(null);
+    hostState.transition("cue");
+    cues.request(cue);
+  }
+
+  function scheduleActivitySwitch() {
+    hostState.scheduleSwitch(ACTIVITY_SETTLE_MS, () => {
+      if (activity !== "idle" && wakeBeforeActivity) playWaking();
+      else enterActivity();
     });
   }
 
-  g.OPetRenderer = Object.freeze({ create });
-})(globalThis[Symbol.for("o-pet.renderer")]);
+  /** @param {import("./types.js").RendererUpdate} next */
+  function update(next) {
+    if (destroyed || hostState.is("preview")) return false;
+    const cue = next.cue;
+
+    const previousActivity = activity;
+    const changed = next.activity !== activity;
+    if (changed) {
+      if (previousActivity === "idle" && next.activity !== "idle")
+        wakeBeforeActivity = idle.leave();
+      activity = next.activity;
+      activityAt = now();
+      if (activity === "idle") idle.reset(activityAt);
+      if (activity !== "terminal") activities.resetProgress();
+      if (
+        activity !== "idle" &&
+        hostState.is("cue") &&
+        cues.isCompletion(cues.current())
+      ) {
+        hostState.transition("switching");
+      }
+      if (hostState.is("interaction")) interaction.cancel();
+    }
+
+    if (activity === "awaiting_approval" && cue === undefined) {
+      interaction.cancel();
+      enterActivity();
+      return true;
+    }
+    if (cue !== undefined) {
+      if (cue === "progress") {
+        requestCue(cue);
+      } else if (wakeBeforeActivity && activity !== "idle") {
+        cues.request(cue, true);
+        playWaking();
+      } else {
+        requestCue(cue);
+      }
+      return true;
+    }
+    if (
+      hostState.is("startup") ||
+      hostState.is("waking") ||
+      hostState.is("cue")
+    )
+      return true;
+    if (changed) scheduleActivitySwitch();
+    return true;
+  }
+
+  /** @param {string} name */
+  function showAction(name) {
+    if (destroyed) return;
+    cues.cancel();
+    interaction.cancel();
+    presenter.clearOverride();
+    presenter.setGazeTarget(null);
+    hostState.transition("preview");
+    timeline.play(
+      "preview",
+      [
+        { state: name, duration: ACTION_PLAY_MS },
+        { pause: true, duration: ACTION_PAUSE_MS },
+      ],
+      { loop: true },
+    );
+  }
+
+  const interaction = O_PET_INTERACTION.create({
+    getActivity: () => activity,
+    idle,
+    interrupt() {
+      hostState.transition("interaction");
+    },
+    now,
+    presenter,
+    presets,
+    returnToActivity: enterActivity,
+    scenes,
+    sequences,
+    timeline,
+    viewportWidth,
+  });
+
+  /** @param {import("./types.js").PointerPoint} contact */
+  function onPointerStart(contact) {
+    const protectedMode =
+      hostState.is("startup") ||
+      hostState.is("waking") ||
+      hostState.is("preview");
+    interaction.start(contact, protectedMode);
+  }
+
+  function onPointerEnd() {
+    interaction.end();
+  }
+
+  function onPointerEnter() {
+    if (
+      activity === "idle" &&
+      !interaction.isActive() &&
+      hostState.is("idle")
+    )
+      idle.hover();
+  }
+
+  function onVisibilityChange() {
+    if (doc.hidden) scheduler.pause("hidden");
+    else scheduler.resume("hidden");
+  }
+
+  const pointer = O_PET_POINTER.create({
+    document: doc,
+    frameClock,
+    onEnd: onPointerEnd,
+    onEnter: onPointerEnter,
+    onStart: onPointerStart,
+    onTrack: (point) => character.setPointerPosition(point),
+    postDrag: options.postDrag,
+    target: options.pointerTarget,
+  });
+
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
+    doc.removeEventListener("visibilitychange", onVisibilityChange);
+    pointer.destroy();
+    preferences.destroy();
+    presenter.destroy();
+    interaction.cancel();
+    hostState.destroy();
+    timeline.destroy();
+    character.destroy();
+    scheduler.destroy();
+  }
+
+  idle.reset(activityAt);
+  doc.addEventListener("visibilitychange", onVisibilityChange);
+  if (doc.hidden) scheduler.pause("hidden");
+  timeline.play(
+    "protected",
+    [{ scene: scenes.spawning, duration: STARTUP_MS }],
+    {
+      onComplete: finishProtected,
+    },
+  );
+
+  return Object.freeze({
+    destroy,
+    setPreferences: preferences.set,
+    showAction,
+    update,
+  });
+}
+
+
+export { create };

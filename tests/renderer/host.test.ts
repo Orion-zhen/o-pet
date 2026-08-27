@@ -20,6 +20,24 @@ describe("渲染器组合根行为", () => {
 		expect(character.playedStates).toEqual(["happy", "happy"]);
 	});
 
+	it("预览拒绝活动更新并保持当前动作", () => {
+		const { api, character, clock } = createHarness();
+		api.showAction("happy");
+
+		expect(api.update({ activity: "thinking" })).toBe(false);
+		clock.advance(4000);
+		expect(latest(character).pose).toBe("happy");
+		expect(character.playedStates).toEqual(["happy", "happy"]);
+	});
+
+	it("普通模式接受活动更新", () => {
+		const { api, character, clock } = createHarness();
+		clock.advance(2000);
+		expect(api.update({ activity: "thinking" })).toBe(true);
+		clock.advance(350);
+		expect(latest(character).pose).toBe("thinking");
+	});
+
 	it("front 预览组合正面注意姿态和锁定视线", () => {
 		const { api, character } = createHarness();
 		api.showAction("front");
@@ -57,6 +75,66 @@ describe("渲染器组合根行为", () => {
 		expect(character.playedStates).toEqual(["sleeping"]);
 		clock.advance(1);
 		expect(character.playedStates).toEqual(["sleeping", "sleeping"]);
+	});
+
+	it("预览拖动跨越暂停和下一轮时持续显示 dragging", () => {
+		const { api, character, clock, document } = createHarness();
+		api.showAction("happy");
+		document.body.dispatch("pointerdown", {
+			button: 0,
+			pointerId: 1,
+			clientX: 20,
+			clientY: 30,
+		});
+		expect(latest(character).pose).toBe("dragging");
+
+		clock.advance(4000);
+		expect(latest(character).pose).toBe("dragging");
+		expect(character.paused).not.toContain(true);
+		expect(character.playedStates).toEqual(["happy"]);
+
+		document.body.dispatch("pointerup", { pointerId: 1 });
+		expect(latest(character).pose).toBe("happy");
+		expect(character.playedStates).toEqual(["happy", "happy"]);
+	});
+
+	it("预览暂停期间拖动会临时恢复帧循环并在松开后恢复暂停", () => {
+		const { api, character, clock, document } = createHarness();
+		api.showAction("happy");
+		clock.advance(3000);
+		expect(character.paused.at(-1)).toBe(true);
+
+		document.body.dispatch("pointerdown", {
+			button: 0,
+			pointerId: 2,
+			clientX: 20,
+			clientY: 30,
+		});
+		expect(latest(character).pose).toBe("dragging");
+		expect(character.paused.at(-1)).toBe(false);
+
+		document.body.dispatch("pointerup", { pointerId: 2 });
+		expect(latest(character).pose).toBe("happy");
+		expect(character.paused.at(-1)).toBe(true);
+		expect(character.renderCount).toBe(1);
+
+		clock.advance(1000);
+		expect(character.paused.at(-1)).toBe(false);
+	});
+
+	it("启动时间线结束前持续拖动时保留覆盖并在松开后显示当前活动", () => {
+		const { character, clock, document } = createHarness();
+		document.body.dispatch("pointerdown", {
+			button: 0,
+			pointerId: 3,
+			clientX: 20,
+			clientY: 30,
+		});
+		clock.advance(2000);
+		expect(latest(character).pose).toBe("dragging");
+
+		document.body.dispatch("pointerup", { pointerId: 3 });
+		expect(latest(character).pose).toBe("idle");
 	});
 
 	it.each([
@@ -306,7 +384,7 @@ describe("渲染器组合根行为", () => {
 
 	it("应用原生配置和系统动态偏好", () => {
 		const { api, character, motion } = createHarness();
-		const bodyPaint = { kind: "solid", color: "#123456" };
+		const bodyPaint = { kind: "solid", color: "#123456" } as const;
 		api.setPreferences({
 			body_color: bodyPaint,
 			eye_color: "#abcdef",
@@ -413,6 +491,26 @@ describe("渲染器组合根行为", () => {
 		expect(character.winkCount).toBe(1);
 	});
 
+	it("唤醒时间线结束前持续拖动时保留覆盖并在松开后显示当前活动", () => {
+		const { api, character, clock, document } = createHarness();
+		clock.advance(10 * 60_000);
+		api.update({ activity: "thinking" });
+		clock.advance(350);
+		expect(latest(character).pose).toBe("waking");
+
+		document.body.dispatch("pointerdown", {
+			button: 0,
+			pointerId: 6,
+			clientX: 20,
+			clientY: 30,
+		});
+		clock.advance(1800);
+		expect(latest(character).pose).toBe("dragging");
+
+		document.body.dispatch("pointerup", { pointerId: 6 });
+		expect(latest(character).pose).toBe("thinking");
+	});
+
 	it("睡眠阶段进入梦境，Agent 活动按保存的睡眠深度先唤醒", () => {
 		const { api, character, clock } = createHarness();
 		clock.advance(10 * 60_000 + 18_000);
@@ -497,8 +595,9 @@ describe("渲染器组合根行为", () => {
 	});
 
 	it("页面隐藏和减少动态模式不改变惊醒交互顺序", () => {
-		const { api, character, clock, document } = createHarness();
-		api.setPreferences({ reduceMotion: true });
+		const { character, clock, document, motion } = createHarness();
+		motion.matches = true;
+		motion.dispatch("change");
 		clock.advance(10 * 60_000);
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 23, clientX: 20, clientY: 30 });
 		clock.advance(100);
@@ -551,6 +650,22 @@ describe("渲染器组合根行为", () => {
 	});
 
 
+	it("销毁预览拖动时不再恢复或渲染基础场景", () => {
+		const { api, character, clock, document } = createHarness();
+		api.showAction("happy");
+		clock.advance(3000);
+		document.body.dispatch("pointerdown", {
+			button: 0,
+			pointerId: 40,
+			clientX: 20,
+			clientY: 30,
+		});
+
+		api.destroy();
+		expect(character.renderCount).toBe(0);
+		expect(character.destroyed).toBe(true);
+	});
+
 	it("销毁活动拖动时结束原生会话并清除指针状态", () => {
 		const { api, document, drags } = createHarness();
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 41, clientX: 20, clientY: 30 });
@@ -569,7 +684,7 @@ describe("渲染器组合根行为", () => {
 		expect(motion.listeners.get("change")?.size).toBe(0);
 		expect(document.body.listeners.get("lostpointercapture")?.size).toBe(0);
 		expect(document.body.listeners.get("pointerenter")?.size).toBe(0);
-		api.update({ activity: "thinking" });
+		expect(api.update({ activity: "thinking" })).toBe(false);
 		expect(character.scenes).toHaveLength(1);
 	});
 });

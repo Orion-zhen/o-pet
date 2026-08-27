@@ -1,6 +1,19 @@
-((browser, modules) => {
-  browser.document.addEventListener("contextmenu", (event) => event.preventDefault());
-  const renderer = modules.OPetRenderer.create({
+// @ts-check
+import { create } from "./host.js";
+
+/**
+ * @param {Window & typeof globalThis} browser
+ * @param {typeof create} [createRenderer]
+ */
+function start(browser, createRenderer = create) {
+  browser.document.addEventListener("contextmenu", (event) =>
+    event.preventDefault(),
+  );
+  const svg = /** @type {SVGSVGElement | null} */ (
+    browser.document.querySelector("svg#pet")
+  );
+  if (svg === null) throw new Error("渲染页面缺少 #pet SVG");
+  const renderer = createRenderer({
     clock: browser,
     document: browser.document,
     frameClock: browser,
@@ -8,8 +21,9 @@
     now: () => browser.performance.now(),
     pointerTarget: browser,
     random: browser.Math.random,
-    svg: browser.document.getElementById("pet"),
+    svg,
     viewportWidth: () => browser.innerWidth,
+    /** @param {import("./types.js").DragMessage} message */
     postDrag(message) {
       browser.oPetNative.postDrag(message);
     },
@@ -21,4 +35,6 @@
   });
   browser.oPetNative.ready();
   browser.addEventListener("pagehide", renderer.destroy, { once: true });
-})(globalThis, globalThis[Symbol.for("o-pet.renderer")]);
+}
+
+export { start };

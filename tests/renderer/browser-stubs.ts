@@ -67,8 +67,8 @@ export class ClockStub {
 		this.#timers.delete(id);
 	}
 
-	requestAnimationFrame(callback: () => void): number {
-		return this.setTimeout(callback, 16);
+	requestAnimationFrame(callback: (time: number) => void): number {
+		return this.setTimeout(() => callback(this.now), 16);
 	}
 
 	cancelAnimationFrame(id: number): void {

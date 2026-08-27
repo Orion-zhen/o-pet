@@ -1,8 +1,7 @@
-import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
+import { create } from "../../renderer/view/particles.js";
 import { SvgElementStub } from "./browser-stubs.js";
-import { geometryEngineSource, mathSource, particlesSource } from "./sources.js";
 
 interface ParticleController {
 	reset(spinAngle?: number): void;
@@ -31,37 +30,26 @@ function createParticleHarness(): {
 	};
 	const back = createElement("g");
 	const front = createElement("g");
-	const windowStub: {
-		OPET_PARTICLES?: { create(options: unknown): ParticleController };
-		OPET_GEO: { Re: number };
-	} = { OPET_GEO: { Re: 114.2705 } };
-	const deterministicMath = Object.create(Math) as Math;
-	deterministicMath.random = () => 0.5;
-	const context = {
-		document: { createElementNS: (_namespace: string, tag: string) => createElement(tag) },
-		matchMedia: () => ({ matches: false }),
-		Math: deterministicMath,
-		window: windowStub,
+	const data = { Re: 114.2705 };
+	const deterministicRandom = (): number => 0.5;
+	const document = {
+		createElementNS: (_namespace: string, tag: string): SvgElementStub =>
+			createElement(tag),
 	};
-	vm.runInNewContext(mathSource, context);
-	vm.runInNewContext(geometryEngineSource, context);
-	vm.runInNewContext(particlesSource, context);
-	const factory = windowStub.OPET_PARTICLES;
-	if (factory === undefined) throw new Error("粒子渲染器未加载");
 	return {
 		elements,
-		particles: factory.create({
+		particles: create({
 			back,
 			clamp: (number: number, minimum: number, maximum: number): number => (
 				Math.min(maximum, Math.max(minimum, number))
 			),
-			data: windowStub.OPET_GEO,
-			document: context.document,
+			data,
+			document,
 			front,
 			getRadius: () => 52,
 			idPrefix: "test-",
 			rand: (minimum: number, maximum: number): number => minimum + 0.5 * (maximum - minimum),
-			random: deterministicMath.random,
+			random: deterministicRandom,
 		}),
 		removedTrails: () => removedTrails,
 	};
