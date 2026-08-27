@@ -21,7 +21,9 @@
     const HAPPY_SCENE_MS = 1400;
     const PLAYFUL_SCENE_MS = 3000;
     const PROUD_SCENE_MS = 2200;
+    const QUICK_HAPPY_SCENE_MS = 900;
     const SEARCHING_SCENE_MS = 3500;
+    const STRETCHING_SCENE_MS = 3500;
 
     function chooseDirection(key) {
       let direction = random() < 0.5 ? -1 : 1;
@@ -198,7 +200,7 @@
           return [
             {
               scene: withDetails(scenes.stretching, { direction }),
-              duration: 3500,
+              duration: STRETCHING_SCENE_MS,
             },
             { scene: scenes.happy, duration: HAPPY_SCENE_MS },
           ];
@@ -256,7 +258,7 @@
           return [
             {
               scene: withDetails(scenes.stretching, { direction }),
-              duration: 3500,
+              duration: STRETCHING_SCENE_MS,
             },
             { scene: scenes.happy, duration: HAPPY_SCENE_MS },
             { scene: scenes.drowsy, duration: 900 },
@@ -322,7 +324,8 @@
         drowsyAt + 180_000,
         randomDelay([600_000, 900_000]),
       );
-      return { startedAt, relaxedAt, drowsyAt, sleepingAt };
+      const wakeAt = sleepingAt + randomDelay([300_000, 480_000]);
+      return { startedAt, relaxedAt, drowsyAt, sleepingAt, wakeAt };
     }
 
     function reset(startedAt = now()) {
@@ -339,6 +342,7 @@
     function depthAt(at = now()) {
       if (!session) return "awake";
       const elapsed = at - session.startedAt;
+      if (elapsed >= session.wakeAt) return "awake";
       if (elapsed >= session.sleepingAt)
         return at < recoveryUntil ? "drowsy" : "sleeping";
       if (elapsed >= session.drowsyAt) return "drowsy";
@@ -361,7 +365,9 @@
         return session.startedAt + session.drowsyAt;
       if (elapsed < session.sleepingAt)
         return session.startedAt + session.sleepingAt;
-      if (at < recoveryUntil) return recoveryUntil;
+      if (at < recoveryUntil)
+        return Math.min(recoveryUntil, session.startedAt + session.wakeAt);
+      if (elapsed < session.wakeAt) return session.startedAt + session.wakeAt;
       return Infinity;
     }
 
@@ -427,8 +433,41 @@
       return randomDelay([5000, 9000]);
     }
 
+    function startNaturalWake() {
+      const direction = chooseDirection("natural-wake");
+      const delighted = random() < 0.15;
+      reset(now());
+      phase = "natural-wake";
+      const token = ++generation;
+      timeline.play(
+        "idle",
+        [
+          {
+            scene: withDetails(scenes.stretching, { direction }),
+            duration: STRETCHING_SCENE_MS,
+          },
+          delighted
+            ? {
+                scene: scenes.quickHappy,
+                duration: QUICK_HAPPY_SCENE_MS,
+                wink: true,
+              }
+            : { scene: scenes.happy, duration: HAPPY_SCENE_MS },
+        ],
+        {
+          onComplete() {
+            if (generation === token && phase === "natural-wake") start();
+          },
+        },
+      );
+    }
+
     function start() {
       if (!session) reset();
+      if (now() - session.startedAt >= session.wakeAt) {
+        startNaturalWake();
+        return;
+      }
       const token = ++generation;
       phase = "idle";
       syncDepth();

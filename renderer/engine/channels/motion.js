@@ -262,12 +262,12 @@
           if (localSec < 0.45) {
             const amount = K2(localSec / 0.45);
             yPx = 5 * amount;
-            squashY = 1 - 0.055 * amount;
+            squashY = 1 - 0.08 * amount;
           } else if (localSec < 2.35) {
             const amount = K2((localSec - 0.45) / 1.9);
             yPx = 5 - 9 * amount;
             rollDeg = direction * 8 * amount;
-            squashY = 0.945 + 0.16 * amount;
+            squashY = 0.92 + 0.23 * amount;
           } else if (localSec < 2.75) {
             const amount = (localSec - 2.35) / 0.4;
             yPx = -4;
@@ -276,12 +276,12 @@
               (8 +
                 Math.sin(amount * Math.PI * 6) *
                   (options.reduceMotion ? 0 : 0.7));
-            squashY = 1.105;
+            squashY = 1.15;
           } else {
             const amount = K2(clamp((localSec - 2.75) / 0.75, 0, 1));
             yPx = -4 * (1 - amount);
             rollDeg = direction * 8 * (1 - amount);
-            squashY = 1.105 - 0.105 * amount;
+            squashY = 1.15 - 0.15 * amount;
           }
           if (options.reduceMotion) {
             rollDeg = 0;

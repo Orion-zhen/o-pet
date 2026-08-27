@@ -407,6 +407,42 @@ describe("渲染器组合根行为", () => {
 		expect(latest(character).variant).toBe("twitch");
 	});
 
+	it.each([
+		[0, 15 * 60_000],
+		[0.999, 23 * 60_000 - 480],
+	] as const)("睡眠持续 5–8 分钟后自然伸展醒来（随机值 %s）", (random, wakeAt) => {
+		const { character, clock } = createHarness(false, () => random);
+		clock.advance(wakeAt - 1);
+		expect(["sleeping", "dreaming"]).toContain(latest(character).pose);
+		clock.advance(1);
+		expect(latest(character).pose).toBe("stretching");
+		expect(character.scenes.some((scene) => scene.pose === "waking")).toBe(false);
+	});
+
+	it("自然醒后开心并重新开始完整空闲周期", () => {
+		const { character, clock } = createHarness(false, () => 0.5);
+		clock.advance(19 * 60_000);
+		const firstDirection = latest(character).direction;
+		if (firstDirection === undefined) throw new Error("自然醒缺少伸展方向");
+		expect(latest(character).pose).toBe("stretching");
+
+		clock.advance(3500);
+		expect(latest(character).pose).toBe("happy");
+		clock.advance(1400);
+		expect(latest(character).pose).toBe("idle");
+
+		clock.advance(38 * 60_000 - clock.now);
+		expect(latest(character).pose).toBe("stretching");
+		expect(latest(character).direction).toBe(-firstDirection);
+	});
+
+	it("自然醒偶尔以眨眼表达睡得很好", () => {
+		const { character, clock } = createHarness(false, () => 0);
+		clock.advance(15 * 60_000 + 3500);
+		expect(latest(character).pose).toBe("happy");
+		expect(character.winkCount).toBe(1);
+	});
+
 	it("睡眠阶段进入梦境，Agent 活动按保存的睡眠深度先唤醒", () => {
 		const { api, character, clock } = createHarness();
 		clock.advance(10 * 60_000 + 18_000);
