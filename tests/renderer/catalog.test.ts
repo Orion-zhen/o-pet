@@ -31,7 +31,7 @@ import {
 } from "../../renderer/engine/channels/motion.js";
 import { create as createMath } from "../../renderer/engine/math.js";
 import { registries as visualRegistries } from "../../renderer/engine/visual-channels.js";
-import { registries as effectRegistries } from "../../renderer/view/effects.js";
+import { create as createEffects } from "../../renderer/view/effects.js";
 import geometryData from "../../renderer/view/geometry-data.js";
 import { create as createGeometry } from "../../renderer/view/geometry.js";
 
@@ -197,16 +197,31 @@ describe("渲染器目录与控制通道", () => {
 		});
 
 		const tables = createTables();
+		const effects = createEffects({
+			data: geometryData,
+			math: createMath(() => 0.5),
+			tables,
+		});
+		expect(effects.registries.form.values).toEqual([
+			"dots", "orbit", "radar", "gather", "wave", "send", "receive",
+			"dock", "ball", "whirl", "pencil", "bang", "standby",
+		]);
+		expect(effects.registries.decoration.values).toContain("thought-pulse");
+		expect(effects.registries.decoration.values).toContain("hum-dots");
+		expect(effects.registries.camera.values).toEqual(
+			effects.registries.form.values,
+		);
+		expect(effects.cameraZoomFor("pencil", 1)).toBe(1.18);
 		const registries = {
 			motion: motionRegistry,
 			face: faceRegistry,
 			gaze: gazeRegistry,
 			choreography: choreographyRegistry,
 			shape: createRegistry("shape", Object.keys(geometryData.shapes)),
-			form: effectRegistries.form,
-			decoration: effectRegistries.decoration,
+			form: effects.registries.form,
+			decoration: effects.registries.decoration,
 			particles: visualRegistries.particles,
-			camera: tables.CAMERA_REGISTRY,
+			camera: effects.registries.camera,
 			badge: visualRegistries.badge,
 		};
 		expect(actionNames).toEqual(Object.keys(presetsModule.actions));

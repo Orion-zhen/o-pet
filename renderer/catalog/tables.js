@@ -1,7 +1,5 @@
 // @ts-check
 /* 眼形播放列表、眨眼节奏、弹簧参数和视图配置。 */
-import { create as createRegistry } from "./registry.js";
-
 function create() {
   /** @type {Record<string, number[]>} */
   const EYE_PLAYLIST = {
@@ -212,29 +210,6 @@ function create() {
   const VIEW = { minX: -15, minY: -15, width: 259, height: 259 };
   const VIEW_HALF = VIEW.width / 2;
   const VIEW_MID = VIEW.minX + VIEW_HALF;
-  /** @type {Readonly<Record<string, number>>} */
-  const CAMERA_ZOOM = {
-    dots: 1.5,
-    orbit: 1.14,
-    radar: 1.14,
-    gather: 1.15,
-    wave: 1.42,
-    send: 1.12,
-    receive: 1.12,
-    dock: 1.3,
-    ball: 1.22,
-    whirl: 1.45,
-    pencil: 1.18,
-    bang: 1.28,
-    standby: 1.75,
-  };
-  const CAMERA_REGISTRY = createRegistry("camera", Object.keys(CAMERA_ZOOM));
-  /** @param {string | null} kind @param {number} scale */
-  const cameraZoomFor = (kind, scale) =>
-    kind == null
-      ? 1
-      : Math.max((CAMERA_ZOOM[kind] ?? 1) / Math.max(scale, 1), 1);
-
   return Object.freeze({
     EYE_PLAYLIST,
     EYE_HOLD_MS,
@@ -245,12 +220,10 @@ function create() {
     POSE,
     POSE_HOME,
     WINK_STATES,
-    CAMERA_REGISTRY,
     poseScale,
     shapeEyeScale,
     VIEW_HALF,
     VIEW_MID,
-    cameraZoomFor,
   });
 }
 

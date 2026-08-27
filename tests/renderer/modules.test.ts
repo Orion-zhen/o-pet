@@ -31,6 +31,7 @@ describe("渲染器模块边界", () => {
 			...javascriptFiles(new URL("catalog/", rendererRoot)),
 			...javascriptFiles(new URL("engine/", rendererRoot)),
 			...javascriptFiles(new URL("runtime/", rendererRoot)),
+			...javascriptFiles(new URL("view/effects/", rendererRoot)),
 			new URL("view/svg.js", rendererRoot),
 		];
 		for (const path of checked)

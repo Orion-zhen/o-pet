@@ -48,8 +48,8 @@ cargo run --release -- --show-action happy
 - `renderer/catalog/` 保存动作名称、场景预设、活动配方、空闲片段和有限序列。`defineScene()` 使用具名字段组合 `motion`、`face`、`expression`、`gaze`、`shape`、`form`、`decoration`、`particles`、`camera` 和 `badge` 十个固定通道。动作预览只接受 `actions` 动作目录中已注册的名称。共享控制通道的场景不会自动继承彼此的入场编排。
 - `renderer/behaviors/` 管理 Agent 活动、空闲深度、Cue 和用户交互的生命周期及运行时分支。活动步骤和空闲片段内容由目录模块构建。步骤构建器分别创建场景、预览状态和暂停步骤，一次性眨眼、旋转、跳跃与扑动通过步骤事件组合。
 - `renderer/runtime/` 提供 Host 状态生命周期、统一动画时钟、可取消时间线和场景呈现端口。状态生命周期集中停止旧导演并管理活动切换计时器。统一时钟同时冻结定时器、动画帧和动画时间。
-- `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。motion、face 和 gaze 通过名称分派到独立控制器定义，不使用集中式状态分支。编排使用通用局部时间事件轨道。`visual-channels.js` 独立管理形变、装饰、粒子、相机和徽标的过渡状态。
-- `renderer/view/` 从帧模型生成 SVG。视图模块拥有 SVG 节点、特效和粒子资源，不读取动画运行时的内部对象。
+- `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。motion、face 和 gaze 通过名称分派到独立控制器定义，不使用集中式状态分支。编排使用通用局部时间事件轨道。`visual-channels.js` 根据特效元数据管理形变、装饰、粒子、相机和徽标的过渡状态。
+- `renderer/view/` 从帧模型生成 SVG。`renderer/view/effects/` 按视觉隐喻拆分绘制和身体采样公式，特效目录统一生成形变、装饰和相机注册表，以及循环、构图缩放和墨迹生命周期元数据。`effects.js` 只组合共享 SVG 节点、特效定义和形变采样器。视图模块不读取动画运行时的内部对象。
 - `renderer/adapters/` 管理浏览器指针、原生拖动协议和动态偏好。`renderer/host.js` 是唯一组合根，只处理外部事件、行为优先级和销毁顺序。
 
 Rust 使用 `rust-embed` 将 `renderer/` 嵌入可执行文件，并通过内部 `o-pet://` 协议提供 HTML、CSS、JavaScript 和 JSON 资源。渲染页面不读取安装目录或外部网络资源。

@@ -34,6 +34,7 @@ AgentEvent
 | 动画目录 | `renderer/catalog/*.js` | 定义场景、活动配方、空闲片段、有限序列和可预览动作名 |
 | 控制器定义 | `renderer/engine/channels/*-definitions.js` | 按名称提供 motion、face 和 gaze 采样函数 |
 | 编排轨道 | `renderer/engine/channels/choreography.js` | 按场景局部时间发出一次性跨通道事件 |
+| 视觉特效 | `renderer/view/effects/*.js` | 定义特效绘制、身体采样和相机等元数据 |
 | 帧运行时 | `renderer/engine/runtime.js` | 采样身体、表情、视觉通道和一次性动作 |
 | 指针跟踪 | `renderer/engine/pointer-tracker.js` | 维护指针目标、边界缓存和平滑视线偏移 |
 | 帧投影 | `renderer/engine/frame.js` | 将可变运行时状态复制为只读 `FrameModel` 快照 |
@@ -55,7 +56,7 @@ AgentEvent
 - `camera`：构图缩放
 - `badge`：徽标
 
-`motion`、`face`、`gaze`、编排和视觉资源分别公开受支持名称的注册表。组合根在创建角色运行时前验证全部场景和预览动作。未知控制器、形状、特效或动作名会直接报错，不会退回默认动画。
+`motion`、`face`、`gaze`、编排和视觉资源分别公开受支持名称的注册表。视觉特效目录从模块定义生成形变、装饰和相机注册表，并集中提供循环时长、构图缩放和墨迹生命周期元数据。组合根在创建角色运行时前验证全部场景和预览动作。未知控制器、形状、特效或动作名会直接报错，不会退回默认动画。
 
 行为导演不直接操作 SVG。导演通过 `renderer/catalog/timeline-steps.js` 创建三种判别式步骤。
 
@@ -534,6 +535,8 @@ quizzical 2200 ms
 | `celebrate` | 进入约 140 ms 后启动狂野旋转。如果场景持续足够久，每 6.2 s 再启动一次 |
 
 `waking` 在进入 0.5–1.2 s 区间时还会触发一次 9–13 个粒子的爆发。这些入场事件使用通用局部时间轨道。运行时为当前轨道维护已触发事件索引，不为每种编排增加专用布尔状态。
+
+形变、装饰和工具隐喻的绘制与身体贡献位于 `renderer/view/effects/`。`form-sampler.js` 只按定义优先级组合缩放、位移、旋转和透明度，不包含具体特效公式。相机缩放跟随特效定义，不再由全局动画参数表维护。
 
 ### 9.3 帧内动作的拟人化作用
 

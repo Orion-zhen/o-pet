@@ -6,7 +6,7 @@
  * @typedef {ReturnType<typeof import("./particles.js").create>} ParticleController
  * @typedef {{ svg: SVGSVGElement, initialShape: string, frame: Readonly<import("../types.js").FrameModel> | null, clipPath: SVGPathElement, defs: SVGDefsElement, document: Document, paintId: string, blurId: string, paintServer: SVGGradientElement | null, blurFilter: SVGFilterElement | null, bodyGlow: SVGPathElement | null, group: SVGGElement, body: SVGPathElement, eyesG: SVGGElement, eyeEls: SVGPathElement[], badge: SVGCircleElement, fx: OverlayLayer, particles: ParticleController }} SvgView
  * @typedef {{ document: Document, initialShape: string, rand: (minimum: number, maximum: number) => number, random: () => number, svg: SVGSVGElement }} SvgRendererOptions
- * @param {{ math: import("../types.js").MathPort, geometry: ReturnType<typeof import("./geometry.js").create>, effects: EffectsRuntime, particles: typeof import("./particles.js"), eyes: ReturnType<typeof import("./eyes.js").create>, data: import("../types.js").GeometryData, tables: { cameraZoomFor(kind: string | null, scale: number): number, VIEW_HALF: number, VIEW_MID: number } }} dependencies
+ * @param {{ math: import("../types.js").MathPort, geometry: ReturnType<typeof import("./geometry.js").create>, effects: EffectsRuntime, particles: typeof import("./particles.js"), eyes: ReturnType<typeof import("./eyes.js").create>, data: import("../types.js").GeometryData, tables: { VIEW_HALF: number, VIEW_MID: number } }} dependencies
  * @param {SvgRendererOptions} options
  * @returns {import("../types.js").RendererPort}
  */
@@ -17,7 +17,8 @@ function create(dependencies, options) {
   const PARTICLES = dependencies.particles;
   const EY = dependencies.eyes;
   const DATA = dependencies.data;
-  const { cameraZoomFor, VIEW_HALF, VIEW_MID } = dependencies.tables;
+  const { VIEW_HALF, VIEW_MID } = dependencies.tables;
+  const { cameraZoomFor } = FX;
   const { lerpFace } = GEO;
 
   /** @param {string} name */

@@ -55,16 +55,22 @@ function create(options, overrides = {}) {
   const viewportWidth = options.viewportWidth;
   const presets = OPET_PRESETS;
   const tables = OPET_TABLES.create();
+  const math = OPET_MATH.create(random);
+  const effects = OPET_EFFECTS.create({
+    data: OPET_GEO,
+    math,
+    tables,
+  });
   OPET_VALIDATION.validate(presets, tables, {
     motion: OPET_MOTION.registry,
     face: OPET_EXPRESSION.registry,
     gaze: OPET_GAZE.registry,
     choreography: OPET_CHOREOGRAPHY.registry,
     shape: createRegistry("shape", Object.keys(OPET_GEO.shapes)),
-    form: OPET_EFFECTS.registries.form,
-    decoration: OPET_EFFECTS.registries.decoration,
+    form: effects.registries.form,
+    decoration: effects.registries.decoration,
     particles: O_PET_VISUAL_CHANNELS.registries.particles,
-    camera: tables.CAMERA_REGISTRY,
+    camera: effects.registries.camera,
     badge: O_PET_VISUAL_CHANNELS.registries.badge,
   });
   const scheduler = O_PET_SCHEDULER.create({
@@ -75,13 +81,7 @@ function create(options, overrides = {}) {
   const now = scheduler.now;
   const scenes = presets.scenes;
   const sequences = OPET_SEQUENCES.create(presets);
-  const math = OPET_MATH.create(random);
   const geometry = OPET_GEOMETRY.create({ data: OPET_GEO, math });
-  const effects = OPET_EFFECTS.create({
-    data: OPET_GEO,
-    math,
-    tables,
-  });
   const eyes = OPET_EYES.create({ geometry, math }, random);
   const character = runtimeModule.create(
     {

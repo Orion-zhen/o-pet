@@ -9,7 +9,7 @@ const registries = Object.freeze({
 
 /**
  * @typedef {Omit<import("../types.js").VisualFrame, "formBlend" | "formMix" | "decorationBlend" | "decorationMix" | "cameraBlend" | "cameraMix" | "notify" | "humDots" | "formTurn"> & { formBlend: import("../types.js").Spring, formMix: import("../types.js").Spring, decorationBlend: import("../types.js").Spring, decorationMix: import("../types.js").Spring, cameraBlend: import("../types.js").Spring, cameraMix: import("../types.js").Spring, notify: import("../types.js").Spring, humDots: import("../types.js").Spring, formTurn: import("../types.js").Spring, formTurnAccumulator: number, formTurnDirection: number, formVisible: boolean, formTarget: string | null, formRest: boolean, formRestAt: number }} VisualState
- * @param {{ effects: { CYCLE: ReadonlySet<string>, CYCLE_ON: Record<string, number>, CYCLE_OFF: number }, math: import("../types.js").MathPort, renderer: Pick<import("../types.js").RendererPort, "resetInk" | "resetPlayback">, springs: { notify: [number, number], humDots: [number, number], visual: [number, number], visualMix: [number, number], formTurn: [number, number] }, now: number }} options
+ * @param {{ effects: { CYCLE: ReadonlySet<string>, CYCLE_ON: Record<string, number>, CYCLE_OFF: number, PRESERVE_INK: ReadonlySet<string> }, math: import("../types.js").MathPort, renderer: Pick<import("../types.js").RendererPort, "resetInk" | "resetPlayback">, springs: { notify: [number, number], humDots: [number, number], visual: [number, number], visualMix: [number, number], formTurn: [number, number] }, now: number }} options
  */
 function create(options) {
   const { effects, math, renderer, springs } = options;
@@ -84,7 +84,7 @@ function create(options) {
     if (
       (decorationChanged || restart) &&
       scene.decoration !== null &&
-      scene.decoration !== "pencil"
+      !effects.PRESERVE_INK.has(scene.decoration)
     ) {
       renderer.resetInk();
     }
@@ -167,10 +167,13 @@ function create(options) {
       }
       state.formKind = want;
       state.formOverlayAt = now;
-      if (want !== "pencil") renderer.resetInk();
+      if (!effects.PRESERVE_INK.has(want)) renderer.resetInk();
     }
     if (!want && state.formBlend.x < 0.004) {
-      if (state.formKind === "pencil" || state.formPrev === "pencil")
+      if (
+        (state.formKind !== null && effects.PRESERVE_INK.has(state.formKind)) ||
+        (state.formPrev !== null && effects.PRESERVE_INK.has(state.formPrev))
+      )
         renderer.resetInk();
       state.formKind = null;
       state.formPrev = null;
@@ -179,7 +182,7 @@ function create(options) {
     const decoration =
       state.decorationState === "hum-dots" ? null : state.decorationState;
     const decorationOn =
-      decoration !== null && (decoration !== "gather" || on);
+      decoration !== null && (!effects.CYCLE.has(decoration) || on);
     state.decorationBlend.t = decorationOn ? 1 : 0;
     if (decoration && decoration !== state.decoKind) {
       if (state.decoKind && state.decorationBlend.x > 0.02) {
@@ -200,7 +203,8 @@ function create(options) {
     }
 
     const camera = state.cameraState;
-    state.cameraBlend.t = camera && (camera !== "gather" || on) ? 1 : 0;
+    state.cameraBlend.t =
+      camera && (!effects.CYCLE.has(camera) || on) ? 1 : 0;
     if (camera && camera !== state.cameraKind) {
       if (state.cameraKind && state.cameraBlend.x > 0.02) {
         state.cameraPrev = state.cameraKind;
