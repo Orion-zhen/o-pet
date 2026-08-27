@@ -71,6 +71,10 @@ const effects = Object.freeze({
     camera: null,
   }),
   notifying: effectRecipe(null, { badge: "notification", camera: null }),
+  "stashed-light": effectRecipe(null, {
+    decoration: "stashed-light",
+    camera: null,
+  }),
 });
 const effectRegistry = createRegistry("effect recipe", Object.keys(effects));
 
@@ -190,6 +194,24 @@ const scenes = Object.freeze({
     expression: "quizzical",
     gaze: "front",
   }),
+  touched: defineScene("touched", {
+    motion: "touched",
+    face: "curious",
+    expression: "curious",
+    gaze: "curious",
+  }),
+  booped: defineScene("booped", {
+    motion: "booped",
+    face: "curious",
+    expression: "curious",
+    gaze: "curious",
+  }),
+  petting: defineScene("petting", {
+    motion: "petting",
+    face: "petting",
+    expression: "petting",
+    gaze: "petting",
+  }),
   dragging: defineScene("dragging", {
     motion: "dragging",
     face: "dragging",
@@ -244,6 +266,28 @@ const scenes = Object.freeze({
     face: "idle",
     expression: "curious",
     gaze: "curious",
+  }),
+  gazeLight: defineScene("gazeLight", {
+    motion: "idle",
+    face: "idle",
+    expression: "curious",
+    gaze: "curious",
+    effect: "stashed-light",
+  }),
+  stashingLight: defineScene("stashingLight", {
+    motion: "stashingLight",
+    face: "curious",
+    expression: "curious",
+    gaze: "curious",
+    effect: "stashed-light",
+  }),
+  stashedLightHappy: defineScene("stashedLightHappy", {
+    motion: "happy",
+    face: "happy",
+    expression: "happy",
+    gaze: "happy",
+    effect: "stashed-light",
+    choreography: "happy",
   }),
   listening: defineScene("listening", {
     motion: "listening",
@@ -345,12 +389,24 @@ const scenes = Object.freeze({
     gaze: "working",
     effect: "orbit",
   }),
+  replyPreparing: defineScene("replyPreparing", {
+    motion: "replyPreparing",
+    face: "listening",
+    expression: "front",
+    gaze: "front",
+  }),
   replying: defineScene("replying", {
     motion: "listening",
     face: "listening",
     expression: "listening",
     gaze: "listening",
     effect: "dictating",
+  }),
+  replyClosing: defineScene("replyClosing", {
+    motion: "replyClosing",
+    face: "listening",
+    expression: "listening",
+    gaze: "front",
   }),
   sending: defineScene("sending", {
     motion: "working",

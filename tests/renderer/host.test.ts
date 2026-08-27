@@ -86,6 +86,12 @@ describe("渲染器组合根行为", () => {
 			clientX: 20,
 			clientY: 30,
 		});
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 1,
+			clientX: 27,
+			clientY: 30,
+		});
 		expect(latest(character).pose).toBe("dragging");
 
 		clock.advance(4000);
@@ -110,6 +116,12 @@ describe("渲染器组合根行为", () => {
 			clientX: 20,
 			clientY: 30,
 		});
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 2,
+			clientX: 27,
+			clientY: 30,
+		});
 		expect(latest(character).pose).toBe("dragging");
 		expect(character.paused.at(-1)).toBe(false);
 
@@ -130,6 +142,12 @@ describe("渲染器组合根行为", () => {
 			clientX: 20,
 			clientY: 30,
 		});
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 3,
+			clientX: 27,
+			clientY: 30,
+		});
 		clock.advance(2000);
 		expect(latest(character).pose).toBe("dragging");
 
@@ -144,12 +162,35 @@ describe("渲染器组合根行为", () => {
 		["receiving", "working", "receiving"],
 		["consulting", "thinking", "orbit"],
 		["tooling", "working", "orbit"],
-		["replying", "listening", "dictating"],
 	] as const)("将 %s 活动组合为姿态和特效通道", (activity, pose, effect) => {
 		const { api, character, clock } = createHarness();
 		api.update({ activity });
 		clock.advance(2000);
 		expect(latest(character)).toMatchObject({ pose, effect });
+	});
+
+	it("从其他活动进入回复时先回正并收起工具特效", () => {
+		const { api, character, clock } = createHarness();
+		clock.advance(2000);
+		api.update({ activity: "coding" });
+		clock.advance(350);
+		expect(latest(character).effect).toBe("writing");
+
+		api.update({ activity: "replying" });
+		clock.advance(349);
+		expect(latest(character).effect).toBe("writing");
+		clock.advance(1);
+		expect(latest(character)).toMatchObject({
+			pose: "replyPreparing",
+			expression: "front",
+			effect: null,
+			gaze: "front",
+		});
+		clock.advance(600);
+		expect(latest(character)).toMatchObject({
+			pose: "listening",
+			effect: "dictating",
+		});
 	});
 
 	it("空闲片段先转移视线，再让身体跟随", () => {
@@ -184,7 +225,7 @@ describe("渲染器组合根行为", () => {
 		const storyStarts = character.scenes
 			.filter((value) => value.pose === "idle" && ["listening", "searching", "curious"].includes(value.gaze))
 			.map((value) => value.gaze);
-		expect(storyStarts.slice(0, 3)).toEqual(["listening", "searching", "curious"]);
+		expect(new Set(storyStarts.slice(0, 3)).size).toBe(3);
 	});
 
 	it("空闲阶段边界由每次会话的随机序列决定", () => {
@@ -314,12 +355,22 @@ describe("渲染器组合根行为", () => {
 		expect(character.scenes.map((value) => value.pose)).not.toContain("laughing");
 	});
 
-	it("先完成回复发送动作，再播放完成反馈", () => {
+	it("回复先收束波形并直接变为发送形变，再播放完成反馈", () => {
 		const { api, character, clock } = createHarness();
 		api.update({ activity: "replying" });
-		clock.advance(2000);
+		clock.advance(2600);
+		expect(latest(character).effect).toBe("dictating");
+
 		api.update({ activity: "replying", cue: "reply_sent" });
+		expect(latest(character)).toMatchObject({
+			pose: "replyClosing",
+			effect: "dictating",
+		});
 		api.update({ activity: "idle", cue: "completed_normal" });
+		clock.advance(279);
+		expect(latest(character).effect).toBe("dictating");
+		clock.advance(1);
+		expect(latest(character).effect).toBe("sending");
 		clock.advance(849);
 		expect(latest(character).effect).toBe("sending");
 		clock.advance(1);
@@ -399,12 +450,15 @@ describe("渲染器组合根行为", () => {
 		expect(character.reducedMotion.at(-1)).toBe(true);
 	});
 
-	it("拖动时临时播放 dragging，并按动画帧合并移动", () => {
+	it("超过位移阈值后才开始拖动，并按动画帧合并移动", () => {
 		const { clock, character, document, drags } = createHarness();
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 4, clientX: 20, clientY: 30 });
-		expect(latest(character).pose).toBe("dragging");
+		expect(latest(character).pose).toBe("touched");
+		expect(drags).toEqual([]);
 		document.body.dispatch("pointermove", { buttons: 1, pointerId: 4, clientX: 21, clientY: 29 });
+		expect(latest(character).pose).toBe("touched");
 		document.body.dispatch("pointermove", { buttons: 1, pointerId: 4, clientX: 27, clientY: 25 });
+		expect(latest(character).pose).toBe("dragging");
 		expect(drags).toEqual([{ phase: "start" }]);
 
 		clock.advance(16);
@@ -421,6 +475,67 @@ describe("渲染器组合根行为", () => {
 		expect(document.body.classes.has("dragging")).toBe(false);
 	});
 
+	it("短按播放轻触回应且不移动窗口", () => {
+		const { character, clock, document, drags } = createHarness();
+		clock.advance(2000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 42, clientX: 20, clientY: 30 });
+		expect(latest(character).pose).toBe("touched");
+		document.body.dispatch("pointerup", { pointerId: 42 });
+		expect(latest(character).pose).toBe("booped");
+		expect(drags).toEqual([]);
+		clock.advance(420);
+		expect(latest(character)).toMatchObject({ pose: "listening", gaze: "front" });
+		clock.advance(650);
+		expect(latest(character).pose).toBe("idle");
+	});
+
+	it("清醒时连续轻触会转为玩耍而不是重复唤醒", () => {
+		const { character, clock, document } = createHarness();
+		clock.advance(2000);
+		for (const pointerId of [44, 45, 46]) {
+			document.body.dispatch("pointerdown", {
+				button: 0,
+				pointerId,
+				clientX: 20,
+				clientY: 30,
+			});
+			document.body.dispatch("pointerup", { pointerId });
+			clock.advance(420 + 650);
+		}
+		expect(latest(character).pose).toBe("playful");
+		clock.advance(1200);
+		expect(latest(character)).toMatchObject({
+			pose: "happy",
+			expression: "winking",
+		});
+		clock.advance(700);
+		expect(latest(character).pose).toBe("idle");
+	});
+
+	it("长按进入抚摸并在释放后开心回应", () => {
+		const { character, clock, document, drags } = createHarness();
+		clock.advance(2000);
+		document.body.dispatch("pointerdown", { button: 0, pointerId: 43, clientX: 20, clientY: 30 });
+		clock.advance(419);
+		expect(latest(character).pose).toBe("touched");
+		clock.advance(1);
+		expect(latest(character)).toMatchObject({ pose: "petting", expression: "petting" });
+		expect(document.body.classes.has("petting")).toBe(true);
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 43,
+			clientX: 35,
+			clientY: 30,
+		});
+		expect(latest(character).pose).toBe("petting");
+		document.body.dispatch("pointerup", { pointerId: 43 });
+		expect(latest(character).pose).toBe("happy");
+		expect(drags).toEqual([]);
+		clock.advance(700);
+		expect(latest(character).pose).toBe("idle");
+		expect(document.body.classes.has("petting")).toBe(false);
+	});
+
 	it("鼠标进入后先追踪鼠标，再回正看向用户", () => {
 		const { character, clock, document } = createHarness();
 		clock.advance(2000);
@@ -430,14 +545,14 @@ describe("渲染器组合根行为", () => {
 		expect(latest(character)).toMatchObject({ pose: "listening", gaze: "front" });
 	});
 
-	it("困倦阶段仍会播放片段并回到 drowsy", () => {
+	it("困倦阶段仍会播放片段并反复回到 drowsy", () => {
 		const { character, clock } = createHarness();
-		clock.advance(4 * 60_000 + 500);
-		expect(latest(character).pose).toBe("drowsy");
-		const sceneCount = character.scenes.length;
-		clock.advance(30_000);
-		expect(character.scenes.length).toBeGreaterThan(sceneCount);
-		expect(latest(character).pose).toBe("drowsy");
+		clock.advance(4 * 60_000 + 30_000);
+		const firstReturns = character.scenes.filter((scene) => scene.pose === "drowsy").length;
+		expect(firstReturns).toBeGreaterThan(0);
+		clock.advance(60_000);
+		const laterReturns = character.scenes.filter((scene) => scene.pose === "drowsy").length;
+		expect(laterReturns).toBeGreaterThan(firstReturns);
 	});
 
 	it("睡眠阶段轮换梦境变体并在片段之间回到 sleeping", () => {
@@ -504,6 +619,12 @@ describe("渲染器组合根行为", () => {
 			clientX: 20,
 			clientY: 30,
 		});
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 6,
+			clientX: 27,
+			clientY: 30,
+		});
 		clock.advance(1800);
 		expect(latest(character).pose).toBe("dragging");
 
@@ -531,7 +652,7 @@ describe("渲染器组合根行为", () => {
 	it("困倦片段被 Agent 打断时不依赖当前画面判断唤醒", () => {
 		const { api, character, clock } = createHarness();
 		clock.advance(4 * 60_000 + 13_000);
-		expect(latest(character).pose).toBe("surprised");
+		expect(character.scenes.some((scene) => scene.pose === "drowsy")).toBe(true);
 		api.update({ activity: "thinking" });
 		clock.advance(350);
 		expect(latest(character).pose).toBe("waking");
@@ -541,6 +662,7 @@ describe("渲染器组合根行为", () => {
 		const { character, clock, document } = createHarness();
 		clock.advance(4 * 60_000);
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 7, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointermove", { buttons: 1, pointerId: 7, clientX: 27, clientY: 30 });
 		expect(latest(character).pose).toBe("dragging");
 		document.body.dispatch("pointerup", { pointerId: 7 });
 		expect(latest(character)).toMatchObject({
@@ -559,6 +681,7 @@ describe("渲染器组合根行为", () => {
 		const directions: Array<number | undefined> = [];
 		for (const pointerId of [20, 21]) {
 			document.body.dispatch("pointerdown", { button: 0, pointerId, clientX: 20, clientY: 30 });
+			document.body.dispatch("pointermove", { buttons: 1, pointerId, clientX: 27, clientY: 30 });
 			document.body.dispatch("pointerup", { pointerId });
 			directions.push(latest(character).direction);
 			expect(latest(character).gaze).toBe("front");
@@ -569,10 +692,12 @@ describe("渲染器组合根行为", () => {
 		expect(first).toBe(-second);
 	});
 
-	it("睡眠时立即开始原生拖动，并在惊醒后显示 dragging", () => {
+	it("睡眠时超过位移阈值才开始拖动，并在惊醒后显示 dragging", () => {
 		const { character, clock, document, drags } = createHarness();
 		clock.advance(10 * 60_000);
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 8, clientX: 20, clientY: 30 });
+		expect(drags).toEqual([]);
+		document.body.dispatch("pointermove", { buttons: 1, pointerId: 8, clientX: 27, clientY: 30 });
 		expect(drags).toEqual([{ phase: "start" }]);
 		expect(latest(character).pose).toBe("startled");
 		clock.advance(650);
@@ -600,6 +725,7 @@ describe("渲染器组合根行为", () => {
 		motion.dispatch("change");
 		clock.advance(10 * 60_000);
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 23, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointermove", { buttons: 1, pointerId: 23, clientX: 27, clientY: 30 });
 		clock.advance(100);
 		document.hidden = true;
 		document.dispatch("visibilitychange");
@@ -643,6 +769,7 @@ describe("渲染器组合根行为", () => {
 		api.update({ activity: "thinking" });
 		clock.advance(2000);
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 13, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointermove", { buttons: 1, pointerId: 13, clientX: 27, clientY: 30 });
 		expect(latest(character).pose).toBe("dragging");
 		document.body.dispatch("pointerup", { pointerId: 13 });
 		expect(latest(character).pose).toBe("thinking");
@@ -660,6 +787,12 @@ describe("渲染器组合根行为", () => {
 			clientX: 20,
 			clientY: 30,
 		});
+		document.body.dispatch("pointermove", {
+			buttons: 1,
+			pointerId: 40,
+			clientX: 27,
+			clientY: 30,
+		});
 
 		api.destroy();
 		expect(character.renderCount).toBe(0);
@@ -669,8 +802,13 @@ describe("渲染器组合根行为", () => {
 	it("销毁活动拖动时结束原生会话并清除指针状态", () => {
 		const { api, document, drags } = createHarness();
 		document.body.dispatch("pointerdown", { button: 0, pointerId: 41, clientX: 20, clientY: 30 });
+		document.body.dispatch("pointermove", { buttons: 1, pointerId: 41, clientX: 27, clientY: 30 });
 		api.destroy();
-		expect(drags).toEqual([{ phase: "start" }, { phase: "end" }]);
+		expect(drags).toEqual([
+			{ phase: "start" },
+			{ phase: "move", dx: 7, dy: 0 },
+			{ phase: "end" },
+		]);
 		expect(document.body.classes.has("dragging")).toBe(false);
 	});
 

@@ -167,6 +167,8 @@ function create(options, overrides = {}) {
   /** @type {import("./types.js").Activity} */
   let activity = "idle";
   let activityAt = now();
+  /** @type {import("./types.js").Activity | null} */
+  let activityFrom = null;
   let wakeBeforeActivity = false;
   let destroyed = false;
 
@@ -174,12 +176,14 @@ function create(options, overrides = {}) {
     if (destroyed) return;
     presenter.setGazeTarget(null);
     wakeBeforeActivity = false;
+    const prepareReply = activity === "replying" && activityFrom !== null;
+    activityFrom = null;
     if (activity === "idle") {
       hostState.transition("idle");
       idle.start();
     } else {
       hostState.transition("activity");
-      activities.start(activity, activityAt);
+      activities.start(activity, activityAt, prepareReply);
     }
   }
 
@@ -239,6 +243,7 @@ function create(options, overrides = {}) {
     if (changed) {
       if (previousActivity === "idle" && next.activity !== "idle")
         wakeBeforeActivity = idle.leave();
+      activityFrom = previousActivity;
       activity = next.activity;
       activityAt = now();
       if (activity === "idle") idle.reset(activityAt);
@@ -322,8 +327,14 @@ function create(options, overrides = {}) {
     interaction.start(contact, protectedMode);
   }
 
-  function onPointerEnd() {
-    interaction.end();
+  /** @param {"petting" | "dragging"} gesture */
+  function onPointerClassify(gesture) {
+    interaction.classify(gesture);
+  }
+
+  /** @param {"tap" | "petting" | "dragging"} gesture */
+  function onPointerEnd(gesture) {
+    interaction.end(gesture);
   }
 
   function onPointerEnter() {
@@ -343,11 +354,14 @@ function create(options, overrides = {}) {
   const pointer = O_PET_POINTER.create({
     document: doc,
     frameClock,
+    onCancel: interaction.abort,
+    onClassify: onPointerClassify,
     onEnd: onPointerEnd,
     onEnter: onPointerEnter,
     onStart: onPointerStart,
     onTrack: (point) => character.setPointerPosition(point),
     postDrag: options.postDrag,
+    scheduler,
     target: options.pointerTarget,
   });
 

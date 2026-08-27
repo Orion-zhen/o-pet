@@ -101,7 +101,17 @@ function create(dependencies) {
       return 0;
     }
 
-    paint(now, stateAt, current, previous, amount, mix, radius, reduce = false) {
+    paint(
+      now,
+      stateAt,
+      current,
+      previous,
+      amount,
+      mix,
+      radius,
+      direction,
+      reduce = false,
+    ) {
       this.hideAll();
       this._reduce = reduce;
       const radiusPx = catalog.radiusFor(current, previous, mix);
@@ -117,6 +127,7 @@ function create(dependencies) {
         if (effectAmount <= 0.004) continue;
         definition.paint(this, {
           amount: effectAmount,
+          direction,
           now,
           stateAt,
           radius,

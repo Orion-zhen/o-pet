@@ -248,6 +248,7 @@ function create(dependencies, options) {
       decorationAmount,
       decorationMix,
       R,
+      frame.sceneDirection,
       frame.reduceMotion,
     );
 

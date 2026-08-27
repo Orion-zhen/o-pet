@@ -196,16 +196,25 @@ idle(drowsy/sleeping) + cue
 
 启动和唤醒不能被 Cue 打断。期间只保留一个待播放 Cue，选择规则见第 6 节。
 
+从其他活动首次进入 `replying` 时，在消抖、唤醒或排队 Cue 完成后先播放回复入场。当前工具特效在 `replyPreparing` 中平滑收回，角色回正并做一次短促吸气，然后进入口述循环。Cue 结束后恢复同一个 `replying` 活动时不重复入场。
+
+```text
+任意其他活动
+  -> switching 350 ms
+  -> replyPreparing 600 ms
+  -> replying
+```
+
 ### 4.2 交互与 Cue 的抢占
 
 - 普通指针按下会打断 `idle`、`activity`、`cue` 或 `switching`。被打断 Cue 及其待播放 Cue 会被清除。
 - 新 Cue 会打断普通交互，并清除交互场景和视线目标。
-- `startup`、`waking` 和 `preview` 是受保护状态。指针按下只临时覆盖 `dragging`。覆盖期间的基础场景变化不会替换 `dragging`，松开后显示最新的基础场景。
+- `startup`、`waking` 和 `preview` 是受保护状态。指针交互只临时覆盖 `touched`、`petting` 或 `dragging`。覆盖期间的基础场景变化不会替换交互画面，松开后显示最新的基础场景。
 - Cue 结束后重新启动当前活动导演，不从被打断步骤续播。
 - 活动变化也会重新创建活动链，不保存旧链的步骤位置。
 - 完成 Cue 播放期间若活动变为新的非空闲活动，完成 Cue 会被取消，新活动按切换流程进入。
 
-临时覆盖只保留最新基础场景，不并行采样底层场景。预览进入一秒暂停步骤时，如果指针仍按住，`dragging` 的动画帧继续运行。暂停期间松开指针会先渲染一次基础场景，然后继续暂停，直到下一轮预览开始。
+临时覆盖只保留最新基础场景，不并行采样底层场景。预览进入一秒暂停步骤时，如果指针仍在抚摸或拖动，覆盖动画的帧继续运行。暂停期间松开指针会先渲染一次基础场景，然后继续暂停，直到下一轮预览开始。
 
 ## 5. 持续活动动画链
 
@@ -222,7 +231,7 @@ idle(drowsy/sleeping) + cue
 | `receiving` | `receiving` 5–8 s -> `curious` 1.2–2.2 s -> 重复 | 无 |
 | `consulting` | `consulting` 4–6.5 s -> `deepThinking` 1.8–3 s -> 重复 | 无 |
 | `tooling` | `tooling` 4.5–7 s -> `loading` 3–5 s -> 重复 | 无 |
-| `replying` | `replying` 6–10 s -> `listening` 0.7–1.2 s -> 重复 | 无 |
+| `replying` | 首次从其他活动进入时 `replyPreparing` 600 ms。随后 `replying` 6–10 s -> `listening` 0.7–1.2 s -> 重复 | `replyPreparing` 收回当前工具特效、回正并吸气；同活动被 Cue 打断后恢复时不重复 |
 | `awaiting_approval` | 首次 `alerting` 1.6 s -> 等待场景 15–25 s -> `notifying` 5 s -> 重复等待段 | 活动开始未满 45 s 时等待场景为 `listening`。达到 45 s 后，新一轮等待改为 `bored` |
 
 `thinking` 和 `searching` 会记住各自上一次强调场景。有多个候选时，下一轮排除上一次结果后再按权重选择，因此不会连续两轮使用同一强调场景。
@@ -246,7 +255,9 @@ idle(drowsy/sleeping) + cue
 | `receiving` | `working` | `curious` | `receiving` | `searching` |
 | `consulting` | `thinking` | `curious` | `orbit` | `thinking` |
 | `tooling` | `working` | `working` | `orbit` | `working` |
+| `replyPreparing` | `replyPreparing` | `front` | 无 | `front` |
 | `replying` | `listening` | `listening` | `dictating` | `listening` |
+| `replyClosing` | `replyClosing` | `listening` | 保留 Cue 前的视觉特效 | `front` |
 
 ### 5.1 持续活动的拟人化叙事
 
@@ -280,7 +291,7 @@ idle(drowsy/sleeping) + cue
 | --- | ---: | --- |
 | `progress` | 0 | 不播放动画，只记录进度时间 |
 | `engage` | 1 | `listening` 350 ms -> `curious` 650 ms |
-| `reply_sent` | 2 | `sending` 850 ms |
+| `reply_sent` | 2 | `replyClosing` 280 ms，保留 Cue 前的视觉特效 -> `sending` 850 ms |
 | `approval_granted` | 2 | `happy` 900 ms，保留 Cue 触发前的视觉特效 |
 | `approval_denied` | 2 | `shy` 900 ms，保留 Cue 触发前的视觉特效 |
 | `error_first` | 3 | `surprised` 650 ms，保留 Cue 触发前的视觉特效 |
@@ -299,7 +310,7 @@ idle(drowsy/sleeping) + cue
 | Cue | 拟人化描述 |
 | --- | --- |
 | `engage` | 听见呼唤后先认真倾听，再带着好奇心靠近任务，表达“我来了，先让我看看”。 |
-| `reply_sent` | 把刚组织好的内容郑重送向用户，像松开一封已经写完的信。 |
+| `reply_sent` | 先收住表达节奏，再把口述波形直接转换成向外发送的内容，像整理好最后一句后松开一封信。`wave` 到 `send` 之间不会恢复普通身形。 |
 | `approval_granted` | 得到许可后露出轻快而克制的开心，表达“收到，我可以继续了”。 |
 | `approval_denied` | 稍微缩回去并显得腼腆，表达“明白，那我不做了”，不把拒绝表现成失败。 |
 | `error_first` | 第一次失败让它突然一惊，像是遇到一个没预料到的小障碍。 |
@@ -366,6 +377,7 @@ Cue 导演维护一个当前 Cue 和一个待播放槽位。
 | 片段 | 深度 | 能量、权重、冷却 | 动画链和分支 |
 | --- | --- | --- | --- |
 | `notice` | `awake`、`relaxed` | 低，5，20 s | `gazeListening` 250 ms -> `listening` 450 ms -> `curious` 900 ms。35% 进入 `playful` 3000 ms 并轻扑，再进入 `happy` 1400 ms。其余进入 `idle` 700 ms |
+| `stash-light` | `awake`、`relaxed` | 中，1.8，60 s | `gazeLight` 350 ms -> `stashingLight` 1720 ms -> `stashedLightHappy` 900 ms。光点从交替方向出现，沿弧线接近并被身体吸收，随后扩散一圈微光 |
 | `patrol` | `awake`、`relaxed` | 低，3，30 s | `gazeSearching` 250 ms -> 同方向 `searching` 3500 ms -> 反方向 `searching` 650 ms -> `proud` 2200 ms |
 | `pounce` | `awake` | 中，2，35 s | `gazeCurious` 250 ms -> `curious` 400 ms -> `playful` 3000 ms -> `jumping` 1050 ms 并全力扑。55% 成功后 `happy` 1400 ms，否则 `surprised` 600 ms -> `shy` 900 ms |
 | `bounce-practice` | `awake` | 高，1.4，75 s | `playful` 3000 ms -> `jumping` 1800 ms 并跳跃。18% 失败后 `surprised` 650 ms -> `shy` 800 ms，否则 `happy` 1400 ms |
@@ -388,6 +400,7 @@ Cue 导演维护一个当前 Cue 和一个待播放槽位。
 | 片段 | 拟人化描述 |
 | --- | --- |
 | `notice` | 它似乎听见旁边有动静，先只转动视线，再侧身观察。发现有趣目标时会忍不住轻扑并为自己的发现开心，否则若无其事地回到原位。 |
+| `stash-light` | 它发现侧上方漂来一枚光点，先用视线锁定，再小心靠近并把光点藏进身体。吸收后的微光和短暂开心表达它成功保存了一件小宝物。 |
 | `patrol` | 它像小小的值班员一样左右巡视，确认周围没有异常后，带着完成巡逻任务的自豪感收尾。 |
 | `pounce` | 它锁定一个想象中的猎物，压低注意力、试探靠近，然后猛扑过去。成功时兴奋，扑空时先受惊再害羞，形成完整的尝试和结果。 |
 | `bounce-practice` | 它主动给自己安排弹跳练习。大多数时候会因完成动作而开心，偶尔失误后则先吓一跳，再不好意思地收场。 |
@@ -426,76 +439,90 @@ curious 500 ms
 
 拟人化上，它先察觉用户靠近，再把注意力从环境转到用户本人。偶发眨眼让这次对视从“注意到了你”升级为“我在主动向你打招呼”。
 
-## 8. 指针按下和拖动
+## 8. 轻触、抚摸和拖动
 
-只有主按钮按下会开始交互。原生窗口拖动立即开始，视觉链由当前活动和空闲深度决定。
+只有主按钮按下会开始交互。按下时角色立即进入 `touched`，看向接触点并轻微受压。指针适配器随后按保持时间和累计位移确定手势：
 
-### 8.1 非睡眠状态
+- 420 ms 内释放，且距离按下位置小于 6 px：`tap`
+- 保持至少 420 ms，且位移仍小于 6 px：`petting`
+- 在进入抚摸前达到 6 px：`dragging`
 
-```text
-pointer down
-  -> dragging，持续到松开
-```
+拖动确定后才发送原生 `start`，随后按动画帧聚合 `move { dx, dy }`。Linux 直接更新窗口边距，macOS 和 Windows 按当前缩放比例更新窗口物理位置。轻触和抚摸不会移动窗口。
 
-如果当前活动不是 `idle`：
+### 8.1 轻触
 
-```text
-dragging
-  -> pointer up
-  -> 立即从头恢复当前活动链
-```
-
-如果当前活动是 `idle`，包括 `awake`、`relaxed` 和 `drowsy`：
+非睡眠状态的轻触链为：
 
 ```text
-dragging
-  -> pointer up
-  -> quizzical 2200 ms，视线锁定正前方
-  -> 恢复当前空闲深度
+touched，持续到松开
+  -> booped 420 ms，保留接触方向
+  -> front 650 ms
+  -> 恢复当前活动或空闲深度
 ```
 
-### 8.2 睡眠状态
+轻触只在释放时计入连续戳弄。拖动和抚摸不计数。
+
+睡眠状态按下后立即播放 `startled` 650 ms。快速轻触会在惊醒结束后进入 `quizzical` 2200 ms，再暂时恢复 `drowsy`。接触窗口左半边时方向为 `+1`，右半边为 `-1`。
+
+### 8.2 抚摸
+
+按住 420 ms 后进入 `petting`。角色靠向接触方向、放松眼睑并保持缓慢呼吸。手势一旦判定为抚摸，后续移动不会改成拖动。
 
 ```text
-pointer down
-  -> startled 650 ms，视线锁定接触点
-  -> 若仍按住则 dragging
-  -> pointer up
-  -> quizzical 2200 ms
-  -> 暂时恢复 drowsy
+touched 或 startled
+  -> petting，持续到松开
+  -> happy 700 ms
+  -> 恢复当前活动或空闲深度
 ```
 
-接触窗口左半边时 `startled` 使用方向 `+1`，右半边使用方向 `-1`。如果在 650 ms 惊醒步骤完成前松开，会跳过 `dragging`，直接进入 `quizzical`。
+抚摸睡眠中的角色会中止惊醒动画。松开后设置 20–40 s 的浅睡恢复窗口。
+
+### 8.3 拖动
+
+非睡眠状态超过位移阈值后立即进入 `dragging`。工作期间放下会从头恢复当前活动链。空闲期间放下会播放 `quizzical` 2200 ms，再恢复当前空闲深度。
+
+睡眠状态超过阈值后，窗口立即跟随指针移动，但视觉上仍先完成 `startled` 650 ms。指针仍按住时再进入 `dragging`。如果在惊醒完成前松开，则跳过 `dragging` 并进入 `quizzical`。
 
 单次睡眠打断会设置 20–40 s 恢复窗口。在该窗口内，已达到睡眠边界的会话按 `drowsy` 呈现。窗口结束后重新进入 `sleeping`。
 
-### 8.3 连续戳弄完全唤醒
+### 8.4 连续轻触
 
-空闲状态下每次按下都会记录一次戳弄。25 s 内达到 3 次时，在本次 `quizzical` 后执行完整唤醒：
+空闲状态下 25 s 内达到 3 次轻触时清空计数。角色根据当前深度选择回应。
+
+`drowsy` 或 `sleeping` 执行完整唤醒：
 
 ```text
-quizzical 2200 ms
+当前轻触收尾
   -> stretching 3500 ms
   -> playful 700 ms
   -> happy 900 ms
   -> 重置空闲会话并进入 awake
 ```
 
-计数达到 3 次后立即清空。完整唤醒从 `stretching` 开始时重置空闲深度计时。
+`awake` 或 `relaxed` 不需要再次唤醒，改为：
 
-### 8.4 交互链的拟人化叙事
+```text
+当前轻触收尾
+  -> playful 1200 ms
+  -> quickHappy 700 ms，并单次眨眼
+  -> 恢复当前空闲会话
+```
+
+### 8.5 交互链的拟人化叙事
 
 | 交互链 | 拟人化描述 |
 | --- | --- |
+| 轻触 | 它先顺着触点压下去，再轻轻回弹并正面确认用户，像在回应一次招呼。 |
+| 抚摸 | 它确认用户没有要搬动自己后，主动靠向接触方向并放松下来。 |
 | 活动期间拖动 | 它允许用户把自己抱起来移动。放下后立刻回到工作，表现出配合但不忘当前职责。 |
 | 清醒空闲时拖动 | 它被抱起时顺着拖动移动，落地后歪头看向用户，像在问“你找我吗”。 |
-| 睡眠时按住 | 突然接触先让它受惊并看向触碰位置。确认自己仍被抱着后，它才进入拖动姿态。 |
-| 睡眠时快速松开 | 它从惊醒直接转为面对用户的疑问，像在确认刚才是否真的有人碰过自己。 |
+| 睡眠时快速轻触 | 它从惊醒转为面对用户的疑问，像在确认刚才是否真的有人碰过自己。 |
 | 单次睡眠打断 | 它没有彻底清醒，只是带着警觉浅睡一段时间，确认安全后再次进入深睡。 |
-| 三次连续戳弄 | 它终于接受用户确实想让自己醒来，于是伸懒腰、恢复玩心、开心回应，并从头开始新的清醒会话。 |
-| 受保护动画期间拖动 | 它在视觉上回应用户的抓取，同时启动、唤醒或预览的高层时间线仍按原节奏前进。松手后，它回到当时应该显示的表演阶段。 |
+| 困倦时三次轻触 | 它终于接受用户确实想让自己醒来，于是伸懒腰、恢复玩心、开心回应，并从头开始新的清醒会话。 |
+| 清醒时三次轻触 | 它把连续招呼理解为玩耍邀请，用短表演和眨眼回应，而不是重复伸懒腰。 |
+| 受保护动画期间交互 | 它通过临时覆盖回应轻触、抚摸或拖动，启动、唤醒或预览时间线仍按原节奏前进。松手后回到当时应该显示的阶段。 |
 
-`quizzical` 是交互链的关键“关系确认”动作。它不表示系统错误，而是角色在被用户触碰后主动确认用户意图。
+`quizzical` 只用于拖动放下和睡眠惊醒后的关系确认，不表示系统错误。
 
 ## 9. 帧内自动动画
 

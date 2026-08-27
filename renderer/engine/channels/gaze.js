@@ -15,6 +15,7 @@ const STATE_MODES = Object.freeze({
   drowsy: "drowsy",
   startled: "ambient",
   front: "front",
+  petting: "happy",
   dragging: "ambient",
   bored: "bored",
   playful: "playful",

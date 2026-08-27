@@ -86,11 +86,12 @@ const LOOPS = Object.freeze({
     Object.freeze({ scene: "tooling", duration: range(4500, 7000) }),
     Object.freeze({ scene: "loading", duration: range(3000, 5000) }),
   ]),
-  replying: Object.freeze([
-    Object.freeze({ scene: "replying", duration: range(6000, 10_000) }),
-    Object.freeze({ scene: "listening", duration: range(700, 1200) }),
-  ]),
 });
+
+const REPLYING = Object.freeze([
+  Object.freeze({ scene: "replying", duration: range(6000, 10_000) }),
+  Object.freeze({ scene: "listening", duration: range(700, 1200) }),
+]);
 const loopRegistry = createRegistry("activity sequence", Object.keys(LOOPS));
 const focusedRegistry = createRegistry(
   "focused activity sequence",
@@ -182,6 +183,16 @@ function create(options) {
       steps.scene(requiredScene("bored"), randomDelay([1400, 2400])),
     );
 
+  /** @param {boolean} prepare */
+  function replying(prepare) {
+    return steps.sequence(
+      ...(prepare
+        ? [steps.scene(requiredScene("replyPreparing"), 600)]
+        : []),
+      ...REPLYING.map(buildStep),
+    );
+  }
+
   /** @param {boolean} initial @param {"listening" | "bored"} waiting */
   function approval(initial, waiting) {
     return initial
@@ -195,7 +206,14 @@ function create(options) {
         );
   }
 
-  return Object.freeze({ approval, focused, loop, terminal, terminalBored });
+  return Object.freeze({
+    approval,
+    focused,
+    loop,
+    replying,
+    terminal,
+    terminalBored,
+  });
 }
 
 export { create, focusedRegistry, loopRegistry };

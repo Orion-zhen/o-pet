@@ -21,7 +21,7 @@
  * @property {() => void} ensureThoughtDots
  */
 
-/** @typedef {{ amount: number, now: number, stateAt: number, radius: number, radiusPx: number, reduce: boolean }} EffectPaintFrame */
+/** @typedef {{ amount: number, direction: number, now: number, stateAt: number, radius: number, radiusPx: number, reduce: boolean }} EffectPaintFrame */
 /** @typedef {{ now: number, stateAt: number, amount: number, effectAmount: number, reduce: boolean }} EffectSampleFrame */
 /** @typedef {{ multiplier: number, dotsAmount?: number, dotPulse?: DotPulse }} ScaleContribution */
 /** @typedef {{ xPx?: number, yPx?: number, rollDeg?: number }} OffsetContribution */

@@ -44,6 +44,27 @@ function create(options) {
       },
     },
     {
+      name: "stash-light",
+      phases: ["awake", "relaxed"],
+      energy: "medium",
+      weight: 1.8,
+      cooldown: 60_000,
+      build() {
+        const direction = chooseDirection("stash-light");
+        return steps.sequence(
+          steps.scene(detailed(scenes.gazeLight, { direction }), 350),
+          steps.scene(
+            detailed(scenes.stashingLight, { direction }),
+            1720,
+          ),
+          steps.scene(
+            detailed(scenes.stashedLightHappy, { direction }),
+            900,
+          ),
+        );
+      },
+    },
+    {
       name: "patrol",
       phases: ["awake", "relaxed"],
       energy: "low",

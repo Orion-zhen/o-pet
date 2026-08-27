@@ -101,6 +101,10 @@ function create(math, tables) {
         output.requestBlink = true;
       }
     },
+    petting(_input, output) {
+      output.restLid = 0.56;
+      output.eyeScale = 1.03;
+    },
     drowsy({ globalSec, now, options }, output) {
       output.restLid = 0.34 + Math.sin(globalSec * 0.8) * 0.07;
       if (!options.slumpAt) return;

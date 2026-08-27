@@ -622,6 +622,7 @@ function create(dependencies, options) {
         prevTilt: this.prevTilt,
         pxW: this.pxW,
         reduceMotion: this.reduceMotion,
+        sceneDirection: this.sceneDirection,
         shapeName: this.shapeName,
         shapeSpring: this.shapeSpring,
         spin: this.spin,

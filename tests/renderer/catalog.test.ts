@@ -208,6 +208,7 @@ describe("渲染器目录与控制通道", () => {
 		]);
 		expect(effects.registries.decoration.values).toContain("thought-pulse");
 		expect(effects.registries.decoration.values).toContain("hum-dots");
+		expect(effects.registries.decoration.values).toContain("stashed-light");
 		expect(effects.registries.camera.values).toEqual(
 			effects.registries.form.values,
 		);
@@ -283,6 +284,19 @@ describe("渲染器目录与控制通道", () => {
 				fragment.build().every((step) => step.kind === "scene"),
 			),
 		).toBe(true);
+		const stashLight = idleFragments.find(({ name }) => name === "stash-light");
+		expect(stashLight).toMatchObject({
+			phases: ["awake", "relaxed"],
+			energy: "medium",
+			cooldown: 60_000,
+		});
+		const stashSteps = stashLight?.build();
+		expect(stashSteps?.map((step) => step.duration)).toEqual([350, 1720, 900]);
+		for (const step of stashSteps ?? []) {
+			if (step.kind !== "scene") throw new Error("藏光点片段包含非场景步骤");
+			const scene = "preset" in step.scene ? step.scene.preset : step.scene;
+			expect(scene.channels.decoration.id).toBe("stashed-light");
+		}
 	});
 
 	it("happy 进入后只触发一次弹跳", () => {

@@ -120,6 +120,20 @@ function create(math, tables) {
         output.rollDeg += Math.sin(nod * Math.PI) * 2;
       }
     },
+    replyPreparing(input, output) {
+      const progress = clamp(input.localSec / 0.6, 0, 1);
+      const inhale = Math.sin(progress * Math.PI);
+      output.yPx = -3.5 * inhale;
+      output.squashX = 1 - 0.025 * inhale;
+      output.squashY = 1 + 0.055 * inhale;
+    },
+    replyClosing(input, output) {
+      const progress = clamp(input.localSec / 0.28, 0, 1);
+      const gather = Math.sin(progress * Math.PI);
+      output.yPx = 2.5 * gather;
+      output.squashX = 1 + 0.035 * gather;
+      output.squashY = 1 - 0.07 * gather;
+    },
     thinking(input, output) {
       output.rollDeg = restRollDeg - 9 + Math.sin(input.globalSec * 0.35) * 5;
       output.xPx = Math.sin(input.globalSec * 0.3) * 5;
@@ -291,6 +305,34 @@ function create(math, tables) {
       output.xPx = input.options.reduceMotion ? 0 : direction * 1.5 * amount;
       output.yPx = input.options.reduceMotion ? 0 : 1.5 * amount;
     },
+    touched(input, output) {
+      const direction = input.options.direction || 1;
+      const press = K2(clamp(input.localSec / 0.16, 0, 1));
+      output.rollDeg = direction * 3 * press;
+      output.xPx = direction * 2.5 * press;
+      output.yPx = 3 * press;
+      output.squashX = 1 + 0.045 * press;
+      output.squashY = 1 - 0.085 * press;
+    },
+    booped(input, output) {
+      const direction = input.options.direction || 1;
+      const progress = clamp(input.localSec / 0.42, 0, 1);
+      const recoil = Math.sin(progress * Math.PI) * (1 - progress * 0.35);
+      output.rollDeg = -direction * 5 * recoil;
+      output.xPx = -direction * 5 * recoil;
+      output.yPx = -4 * recoil;
+      output.squashX = 1 - 0.035 * recoil;
+      output.squashY = 1 + 0.075 * recoil;
+    },
+    petting(input, output) {
+      const direction = input.options.direction || 1;
+      const settle = K2(clamp(input.localSec / 0.7, 0, 1));
+      const breathing = Math.sin(input.globalSec * 0.9);
+      output.rollDeg = direction * 7 * settle + breathing * 0.8;
+      output.xPx = direction * 4 * settle;
+      output.yPx = 2 * settle + breathing * 0.8;
+      output.squashY = 1 - 0.025 * settle + breathing * 0.006;
+    },
     drowsy(input, output) {
       output.rollDeg = restRollDeg + Math.sin(input.globalSec * 0.32) * 2.5;
       output.xPx = Math.sin(input.globalSec * 0.2) * 1.5;
@@ -352,6 +394,17 @@ function create(math, tables) {
         output.xPx += Math.sin(nod * Math.PI) * 8;
         output.rollDeg += Math.sin(nod * Math.PI) * 5;
       }
+    },
+    stashingLight(input, output) {
+      const direction = input.options.direction || 1;
+      const approach = K2(clamp(input.localSec / 0.9, 0, 1));
+      const absorption = clamp((input.localSec - 1.05) / 0.5, 0, 1);
+      const recoil = Math.sin(absorption * Math.PI);
+      output.rollDeg = direction * (7 * approach - 5 * recoil);
+      output.xPx = direction * (6 * approach - 8 * recoil);
+      output.yPx = -2 * approach + 3 * recoil;
+      output.squashX = 1 + 0.055 * recoil;
+      output.squashY = 1 - 0.09 * recoil;
     },
     confused(input, output) {
       const sway = Math.sin(input.globalSec * 0.8);

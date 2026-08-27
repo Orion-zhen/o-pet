@@ -8,6 +8,7 @@ import { create as createOrbit } from "./orbit.js";
 import { create as createPencil } from "./pencil.js";
 import { create as createRadar } from "./radar.js";
 import { create as createStandby } from "./standby.js";
+import { create as createStashedLight } from "./stashed-light.js";
 import { create as createThinking } from "./thinking.js";
 import { create as createTransfer } from "./transfer.js";
 import { create as createWave } from "./wave.js";
@@ -34,6 +35,7 @@ function create(dependencies) {
     createPencil(dependencies),
     createBang(dependencies),
     createStandby(dependencies),
+    createStashedLight(dependencies),
   ];
   /** @type {Record<string, import("./contracts.js").EffectDefinition>} */
   const definitions = {};

@@ -12,7 +12,10 @@ function create(presets) {
       steps.scene(S.listening, 350),
       steps.scene(S.curious, 650),
     ),
-    reply_sent: steps.sequence(steps.scene(S.sending, 850)),
+    reply_sent: steps.sequence(
+      steps.scene(S.replyClosing, 280, { preserveEffect: true }),
+      steps.scene(S.sending, 850),
+    ),
     approval_granted: steps.sequence(
       steps.scene(S.happy, 900, { preserveEffect: true }),
     ),
@@ -58,7 +61,17 @@ function create(presets) {
       steps.scene(S.happy, 900),
     );
 
-  return Object.freeze({ cues, fullWake });
+  /** @param {number} direction */
+  const tapPlay = (direction) =>
+    steps.sequence(
+      steps.scene(
+        presets.withDetails(S.playful, { direction }),
+        1200,
+      ),
+      steps.scene(S.quickHappy, 700, { events: [steps.wink()] }),
+    );
+
+  return Object.freeze({ cues, fullWake, tapPlay });
 }
 
 export { create };

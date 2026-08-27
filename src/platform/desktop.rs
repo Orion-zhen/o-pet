@@ -103,15 +103,50 @@ impl SystemTray {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum PageMessage {
     Ready,
-    Drag { phase: DragPhase },
+    Drag {
+        #[serde(flatten)]
+        event: DragEvent,
+    },
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum DragPhase {
+#[serde(tag = "phase", rename_all = "lowercase")]
+enum DragEvent {
     Start,
-    Move,
+    Move { dx: f64, dy: f64 },
     End,
+}
+
+#[derive(Default)]
+struct DragSession {
+    active: bool,
+    residual_x: f64,
+    residual_y: f64,
+}
+
+impl DragSession {
+    fn start(&mut self) {
+        self.active = true;
+        self.residual_x = 0.0;
+        self.residual_y = 0.0;
+    }
+
+    fn delta(&mut self, dx: f64, dy: f64, scale: f64) -> Option<(i32, i32)> {
+        if !self.active || !dx.is_finite() || !dy.is_finite() {
+            return None;
+        }
+        self.residual_x += dx * scale;
+        self.residual_y += dy * scale;
+        let whole_x = self.residual_x.round() as i32;
+        let whole_y = self.residual_y.round() as i32;
+        self.residual_x -= f64::from(whole_x);
+        self.residual_y -= f64::from(whole_y);
+        Some((whole_x, whole_y))
+    }
+
+    fn end(&mut self) {
+        self.active = false;
+    }
 }
 
 struct MonitorChoice {
@@ -218,6 +253,7 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
     let mut preferences = config.renderer;
     let mut latest_update = AnimationUpdate::steady(Activity::Idle);
     let mut page_ready = false;
+    let mut drag = DragSession::default();
     let mut server = server;
     let mut tray = None;
     event_loop.run(move |event, target, control_flow| {
@@ -275,15 +311,21 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                 }
             }
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
-                phase: DragPhase::Start,
+                event: DragEvent::Start,
+            })) => drag.start(),
+            Event::UserEvent(UserEvent::Page(PageMessage::Drag {
+                event: DragEvent::Move { dx, dy },
             })) => {
-                if let Err(error) = window.drag_window() {
+                if let Some((dx, dy)) = drag.delta(dx, dy, window.scale_factor())
+                    && let Err(error) = move_window_by(&window, dx, dy)
+                {
                     eprintln!("无法拖动 o-pet 窗口: {error}");
+                    drag.end();
                 }
             }
             Event::UserEvent(UserEvent::Page(PageMessage::Drag {
-                phase: DragPhase::Move | DragPhase::End,
-            })) => {}
+                event: DragEvent::End,
+            })) => drag.end(),
             Event::Reopen { .. } => window.set_visible(true),
             Event::WindowEvent {
                 window_id,
@@ -451,6 +493,15 @@ fn reset_to_primary(
     Ok(())
 }
 
+fn move_window_by(window: &Window, dx: i32, dy: i32) -> Result<(), Box<dyn Error>> {
+    let position = window.outer_position()?;
+    window.set_outer_position(PhysicalPosition::new(
+        position.x.saturating_add(dx),
+        position.y.saturating_add(dy),
+    ));
+    Ok(())
+}
+
 fn reload_config(
     window: &Window,
     target: &EventLoopWindowTarget<UserEvent>,
@@ -553,8 +604,8 @@ fn is_internal_document_uri(uri: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        HIDE_MENU_ID, QUIT_MENU_ID, RELOAD_MENU_ID, SHOW_MENU_ID, SystemTray, TrayCommand,
-        is_internal_document_uri,
+        DragEvent, DragSession, HIDE_MENU_ID, PageMessage, QUIT_MENU_ID, RELOAD_MENU_ID,
+        SHOW_MENU_ID, SystemTray, TrayCommand, is_internal_document_uri,
     };
     use tray_icon::menu::MenuEvent;
 
@@ -582,6 +633,28 @@ mod tests {
             "about:srcdoc",
         ] {
             assert!(!is_internal_document_uri(uri), "应拒绝 {uri}");
+        }
+    }
+
+    #[test]
+    fn parses_drag_messages_and_scales_logical_deltas() {
+        let message = serde_json::from_str::<PageMessage>(
+            r#"{"type":"drag","phase":"move","dx":6.25,"dy":-3.5}"#,
+        )
+        .expect("drag message");
+        match message {
+            PageMessage::Drag {
+                event: DragEvent::Move { dx, dy },
+            } => {
+                let mut drag = DragSession::default();
+                assert_eq!(drag.delta(dx, dy, 2.0), None);
+                drag.start();
+                assert_eq!(drag.delta(dx, dy, 2.0), Some((13, -7)));
+                drag.start();
+                assert_eq!(drag.delta(0.2, 0.2, 2.0), Some((0, 0)));
+                assert_eq!(drag.delta(0.2, 0.2, 2.0), Some((1, 1)));
+            }
+            _ => panic!("拖动消息类型不正确"),
         }
     }
 

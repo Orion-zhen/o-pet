@@ -18,6 +18,10 @@ body.dragging {
 	cursor: grabbing;
 }
 
+body.petting {
+	cursor: default;
+}
+
 #pet {
 	width: 82%;
 	height: 82%;

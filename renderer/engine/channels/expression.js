@@ -17,6 +17,7 @@ const STATE_MODES = Object.freeze({
   stretching: "stretching",
   startled: "startled",
   quizzical: "quizzical",
+  petting: "petting",
   dragging: "dragging",
   listening: "neutral",
   curious: "curious",

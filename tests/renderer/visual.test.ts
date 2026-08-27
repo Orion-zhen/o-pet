@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import geometryData from "../../renderer/view/geometry-data.js";
 import { ClockStub, DocumentStub, MotionQueryStub, SvgElementStub } from "./browser-stubs.js";
 import {
 	createVisualHarness, hasLiveTrail, renderedEyeCenters, renderedEyeSizes, svgHash,
@@ -467,6 +468,49 @@ describe("渲染器视觉运行时", () => {
 		harness.character.playPreset(harness.presets.scenes.celebrate);
 		for (let time = 16; time <= 1200; time += 16) harness.frame(time);
 		expect(hasLiveTrail(harness.svg)).toBe(true);
+		harness.character.destroy();
+	});
+
+	it("藏光点会从指定方向接近身体并被吸收", () => {
+		const harness = createVisualHarness();
+		const visibleEffectCircles = (): SvgElementStub[] => {
+			const circles: SvgElementStub[] = [];
+			const visit = (element: SvgElementStub): void => {
+				if (element.tag === "circle" && element.style.display === "") circles.push(element);
+				for (const child of element.children) visit(child);
+			};
+			visit(harness.svg);
+			return circles;
+		};
+		const scene = harness.presets.scenes.gazeLight;
+		if (scene === undefined) throw new Error("缺少藏光点场景");
+
+		harness.character.playPreset(
+			harness.presets.withDetails(scene, { direction: 1 }),
+		);
+		harness.frame(500);
+		const rightDot = visibleEffectCircles().find((circle) =>
+			Number(circle.attributes.get("r")) > 1
+		);
+		expect(Number(rightDot?.attributes.get("cx"))).toBeGreaterThan(geometryData.Re);
+		expect(harness.latestFrame()).toMatchObject({
+			decorationState: "stashed-light",
+			sceneDirection: 1,
+		});
+
+		harness.setTime(3000);
+		harness.character.playPreset(
+			harness.presets.withDetails(scene, { direction: -1 }),
+		);
+		harness.frame(3500);
+		const leftDot = visibleEffectCircles().find((circle) =>
+			Number(circle.attributes.get("r")) > 1
+		);
+		expect(Number(leftDot?.attributes.get("cx"))).toBeLessThan(geometryData.Re);
+		harness.frame(5100);
+		expect(visibleEffectCircles().some((circle) =>
+			Number(circle.attributes.get("r")) > 70
+		)).toBe(true);
 		harness.character.destroy();
 	});
 

@@ -72,7 +72,9 @@ class CharacterStub {
 				? "humming"
 				: channels.decoration?.id === "thought-pulse"
 					? "thinking-alt"
-					: channels.badge?.id === "notification" ? "notifying" : null
+					: channels.decoration?.id === "stashed-light"
+						? "stashed-light"
+						: channels.badge?.id === "notification" ? "notifying" : null
 			: effectsByForm[form] ?? form;
 		this.setScene({
 			pose: channels.motion?.id ?? "idle",

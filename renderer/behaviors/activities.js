@@ -27,7 +27,7 @@ function create(options) {
   /** @param {WorkActivity} expected @param {number} token */
   function repeat(expected, token) {
     return () => {
-      if (stillIn(expected, token)) run(expected, token);
+      if (stillIn(expected, token)) run(expected, token, false);
     };
   }
 
@@ -68,9 +68,15 @@ function create(options) {
     });
   }
 
-  /** @param {WorkActivity} name @param {number} token */
-  function run(name, token) {
+  /** @param {WorkActivity} name @param {number} token @param {boolean} initial */
+  function run(name, token, initial) {
     if (!stillIn(name, token)) return;
+    if (name === "replying") {
+      timeline.play("activity", sequences.replying(initial), {
+        onComplete: repeat(name, token),
+      });
+      return;
+    }
     if (focusedRegistry.has(name)) {
       runFocused(
         /** @type {"thinking" | "searching"} */ (name),
@@ -95,12 +101,12 @@ function create(options) {
     throw new Error(`活动缺少动画配方: ${name}`);
   }
 
-  /** @param {WorkActivity} name @param {number} startedAt */
-  function start(name, startedAt) {
+  /** @param {WorkActivity} name @param {number} startedAt @param {boolean} prepareReply */
+  function start(name, startedAt, prepareReply) {
     activity = name;
     activityAt = startedAt;
     const token = ++generation;
-    run(name, token);
+    run(name, token, prepareReply);
   }
 
   function progress() {
