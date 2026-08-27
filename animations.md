@@ -30,8 +30,10 @@ AgentEvent
 | 统一时钟 | `renderer/runtime/scheduler.js` | 统一定时器、动画帧和逻辑时间，处理页面隐藏 |
 | 有限时间线 | `renderer/runtime/timeline.js` | 顺序进入步骤、循环、完成回调和取消 |
 | 场景呈现 | `renderer/runtime/presenter.js` | 维护基础场景、临时覆盖和一次性动作 |
-| 行为导演 | `renderer/behaviors/*.js` | 生成活动、空闲、Cue 和指针交互的步骤链 |
-| 动画目录 | `renderer/catalog/*.js` | 定义场景、有限序列和可预览动作名 |
+| 行为导演 | `renderer/behaviors/*.js` | 管理活动、空闲、Cue 和指针交互的生命周期与运行时分支 |
+| 动画目录 | `renderer/catalog/*.js` | 定义场景、活动配方、空闲片段、有限序列和可预览动作名 |
+| 控制器定义 | `renderer/engine/channels/*-definitions.js` | 按名称提供 motion、face 和 gaze 采样函数 |
+| 编排轨道 | `renderer/engine/channels/choreography.js` | 按场景局部时间发出一次性跨通道事件 |
 | 帧运行时 | `renderer/engine/runtime.js` | 采样身体、表情、视觉通道和一次性动作 |
 | 指针跟踪 | `renderer/engine/pointer-tracker.js` | 维护指针目标、边界缓存和平滑视线偏移 |
 | 帧投影 | `renderer/engine/frame.js` | 将可变运行时状态复制为只读 `FrameModel` 快照 |
@@ -40,7 +42,7 @@ AgentEvent
 
 ## 2. 场景和步骤
 
-一个场景固定包含 10 个正交通道：
+场景通过 `defineScene()` 的具名字段组合，并固定包含 10 个正交通道：
 
 - `motion`：身体姿态和位移
 - `face`：脸部姿态
@@ -53,21 +55,25 @@ AgentEvent
 - `camera`：构图缩放
 - `badge`：徽标
 
-行为导演不直接操作 SVG。导演只向时间线提交步骤，常用字段如下。
+`motion`、`face`、`gaze`、编排和视觉资源分别公开受支持名称的注册表。组合根在创建角色运行时前验证全部场景和预览动作。未知控制器、形状、特效或动作名会直接报错，不会退回默认动画。
 
-| 字段 | 效果 |
+行为导演不直接操作 SVG。导演通过 `renderer/catalog/timeline-steps.js` 创建三种判别式步骤。
+
+| `kind` | 必需内容 | 效果 |
+| --- | --- | --- |
+| `scene` | `scene`、`duration` | 切换组合场景，默认保留弹簧连续性，不重置整段播放 |
+| `state` | `state`、`duration` | 从已注册动作名取得完整预设，并用 `playPreset` 重启播放，用于预览模式 |
+| `pause` | `duration` | 暂停角色动画帧，步骤计时仍由时间线继续 |
+
+`scene` 步骤还可声明以下选项。
+
+| 选项 | 效果 |
 | --- | --- |
-| `scene` | 切换组合场景，默认保留弹簧连续性，不重置整段播放 |
-| `state` | 从动作名构造完整预设，并用 `playPreset` 重启播放，用于预览模式 |
-| `duration` | 当前步骤保持时间 |
-| `pause` | 暂停角色动画帧，步骤计时仍由时间线继续 |
-| `wink` | 进入步骤时单次眨一只眼 |
-| `spin` | 进入步骤时单次旋转 |
-| `bounce` | 进入步骤时单次跳跃 |
-| `pounce` | 进入步骤时施加横向和纵向冲量 |
+| `events` | 在步骤入口依次触发 `wink`、`spin`、`hop` 或 `pounce` 一次性事件 |
 | `preserveEffect` | 保留基础场景的 5 个视觉特效通道，只替换身体、脸、表情和视线 |
+| `restart` | 重置当前预设的播放状态，而不是保持弹簧连续性 |
 
-场景切换和一次性动作都发生在步骤入口。步骤到时后，时间线进入下一步。非循环时间线完成后执行导演提供的回调。
+场景切换和一次性事件都发生在步骤入口。步骤到时后，时间线进入下一步。非循环时间线完成后执行导演提供的回调。步骤类型不允许同时声明场景、预览状态和暂停。
 
 ## 3. Agent 事件如何选择活动
 
@@ -201,6 +207,8 @@ idle(drowsy/sleeping) + cue
 临时覆盖只保留最新基础场景，不并行采样底层场景。预览进入一秒暂停步骤时，如果指针仍按住，`dragging` 的动画帧继续运行。暂停期间松开指针会先渲染一次基础场景，然后继续暂停，直到下一轮预览开始。
 
 ## 5. 持续活动动画链
+
+活动场景、时长、权重和步骤事件定义在 `renderer/catalog/activity-sequences.js`。`renderer/behaviors/activities.js` 只管理活动生命周期，以及终端输出和审批时长等运行时分支。
 
 下表中的范围为每轮独立随机选择。活动保持不变时，链尾回到链首。
 
@@ -352,6 +360,8 @@ Cue 导演维护一个当前 Cue 和一个待播放槽位。
 
 ### 7.3 空闲片段链
 
+片段的深度、能量、权重、冷却和步骤链定义在 `renderer/catalog/idle-fragments.js`。空闲导演只负责按当前会话状态筛选和播放片段。
+
 | 片段 | 深度 | 能量、权重、冷却 | 动画链和分支 |
 | --- | --- | --- | --- |
 | `notice` | `awake`、`relaxed` | 低，5，20 s | `gazeListening` 250 ms -> `listening` 450 ms -> `curious` 900 ms。35% 进入 `playful` 3000 ms 并轻扑，再进入 `happy` 1400 ms。其余进入 `idle` 700 ms |
@@ -498,7 +508,7 @@ quizzical 2200 ms
 - 场景切换后，普通视线首次等待通常为 0.5–1.4 s。`front` 和 `sleeping` 首次等待 5–8 s。之后由当前 `gaze` 控制器选择目标和保持时间。
 - 启用跟随指针时，指针位置覆盖程序化视线。`front` 和 `sleeping` 锁定正前方，不跟随指针。惊醒交互设置的显式接触点优先于普通指针跟随。
 
-眼形列表、保持范围和眨眼范围的数据源是 `renderer/catalog/tables.js`。视线目标范围和保持时间的数据源是 `renderer/engine/channels/gaze.js`。
+眼形列表、保持范围和眨眼范围的数据源是 `renderer/catalog/tables.js`。身体运动、脸部姿态和视线目标分别定义在 `renderer/engine/channels/motion-definitions.js`、`expression-definitions.js` 和 `gaze-definitions.js`。通道入口只负责将注册名称分派到对应定义。
 
 ### 9.2 身体和入场编排事件
 
@@ -523,7 +533,7 @@ quizzical 2200 ms
 | `dragging` | 身体动作以 3.4 s 为周期循环 |
 | `celebrate` | 进入约 140 ms 后启动狂野旋转。如果场景持续足够久，每 6.2 s 再启动一次 |
 
-`waking` 在进入 0.5–1.2 s 区间时还会触发一次 9–13 个粒子的爆发。
+`waking` 在进入 0.5–1.2 s 区间时还会触发一次 9–13 个粒子的爆发。这些入场事件使用通用局部时间轨道。运行时为当前轨道维护已触发事件索引，不为每种编排增加专用布尔状态。
 
 ### 9.3 帧内动作的拟人化作用
 

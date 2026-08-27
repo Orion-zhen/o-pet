@@ -1,5 +1,6 @@
 // @ts-check
 /* 用户交互行为。把指针接触展开为拖动、惊醒、询问和完全唤醒时间线。 */
+import * as steps from "../catalog/timeline-steps.js";
 const STARTLED_MS = 650;
 const QUIZZICAL_MS = 2200;
 
@@ -69,10 +70,10 @@ function create(options) {
     timeline.play(
       "interaction",
       [
-        {
-          scene: presets.withDetails(scenes.quizzical, { direction }),
-          duration: QUIZZICAL_MS,
-        },
+        steps.scene(
+          presets.withDetails(scenes.quizzical, { direction }),
+          QUIZZICAL_MS,
+        ),
       ],
       { onComplete: finishQuizzical },
     );
@@ -119,12 +120,12 @@ function create(options) {
       timeline.play(
         "interaction",
         [
-          {
-            scene: presets.withDetails(scenes.startled, {
+          steps.scene(
+            presets.withDetails(scenes.startled, {
               direction: contactDirection(contact.x),
             }),
-            duration: STARTLED_MS,
-          },
+            STARTLED_MS,
+          ),
         ],
         { onComplete: finishStartled },
       );

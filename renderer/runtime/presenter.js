@@ -62,33 +62,44 @@ function create(options) {
     ]);
   }
 
-  /** @param {import("../types.js").TimelineStep} step */
-  function trigger(step) {
-    if (step.wink) character.winkOnce();
-    if (step.spin) character.spinOnce(step.spin.turns, step.spin.direction);
-    if (step.hop) character.hopOnce();
-    if (step.pounce)
-      character.pounceOnce(step.pounce.direction, step.pounce.strength);
+  /** @param {readonly import("../types.js").TimelineEvent[]} events */
+  function trigger(events) {
+    for (const event of events) {
+      switch (event.kind) {
+        case "wink":
+          character.winkOnce();
+          break;
+        case "spin":
+          character.spinOnce(event.turns, event.direction);
+          break;
+        case "hop":
+          character.hopOnce();
+          break;
+        case "pounce":
+          character.pounceOnce(event.direction, event.strength);
+          break;
+      }
+    }
   }
 
   /** @param {import("../types.js").TimelineStep} step */
   function enterStep(step) {
     if (disposed) return;
-    if (step.pause === true) {
+    if (step.kind === "pause") {
       suspended = true;
       if (overrideScene === null) character.setPaused(true);
       return;
     }
-    if (step.state !== undefined) {
+    if (step.kind === "state") {
       setBaseScene(presets.fromState(step.state), true);
-    } else if (step.scene !== undefined) {
+    } else {
       const scene = step.preserveEffect
         ? withReaction(step.scene)
         : step.scene;
       if (step.restart === true) setBaseScene(scene, true);
       else setScene(scene);
+      trigger(step.events ?? []);
     }
-    trigger(step);
     if (suspended) {
       suspended = false;
       character.setPaused(false);

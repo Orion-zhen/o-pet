@@ -45,10 +45,10 @@ cargo run --release -- --show-action happy
 
 渲染器使用单向依赖和显式组合：
 
-- `renderer/catalog/` 保存动作名称、场景预设和有限序列。场景由 `motion`、`face`、`expression`、`gaze`、`shape`、`form`、`decoration`、`particles`、`camera` 和 `badge` 十个固定通道组成，并可独立声明入场编排。共享控制通道的场景不会自动继承彼此的入场编排。
-- `renderer/behaviors/` 将 Agent 活动、空闲深度、Cue 和用户交互转换为时间线。各行为模块只依赖场景目录、随机数和时间线端口。
+- `renderer/catalog/` 保存动作名称、场景预设、活动配方、空闲片段和有限序列。`defineScene()` 使用具名字段组合 `motion`、`face`、`expression`、`gaze`、`shape`、`form`、`decoration`、`particles`、`camera` 和 `badge` 十个固定通道。动作预览只接受 `actions` 动作目录中已注册的名称。共享控制通道的场景不会自动继承彼此的入场编排。
+- `renderer/behaviors/` 管理 Agent 活动、空闲深度、Cue 和用户交互的生命周期及运行时分支。活动步骤和空闲片段内容由目录模块构建。步骤构建器分别创建场景、预览状态和暂停步骤，一次性眨眼、旋转、跳跃与扑动通过步骤事件组合。
 - `renderer/runtime/` 提供 Host 状态生命周期、统一动画时钟、可取消时间线和场景呈现端口。状态生命周期集中停止旧导演并管理活动切换计时器。统一时钟同时冻结定时器、动画帧和动画时间。
-- `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。`visual-channels.js` 独立管理形变、装饰、粒子、相机和徽标的过渡状态。
+- `renderer/engine/` 解析场景、采样控制通道、推进弹簧并生成帧模型。motion、face 和 gaze 通过名称分派到独立控制器定义，不使用集中式状态分支。编排使用通用局部时间事件轨道。`visual-channels.js` 独立管理形变、装饰、粒子、相机和徽标的过渡状态。
 - `renderer/view/` 从帧模型生成 SVG。视图模块拥有 SVG 节点、特效和粒子资源，不读取动画运行时的内部对象。
 - `renderer/adapters/` 管理浏览器指针、原生拖动协议和动态偏好。`renderer/host.js` 是唯一组合根，只处理外部事件、行为优先级和销毁顺序。
 
@@ -56,7 +56,7 @@ Rust 使用 `rust-embed` 将 `renderer/` 嵌入可执行文件，并通过内部
 
 渲染器使用标准 ESM 静态导入。`bootstrap.js` 只启动页面组合根，浏览器全局只暴露 `window.oPet`。构造动画运行时所需的时钟、随机数、文档和渲染端口均由组合根注入。测试直接导入模块。组合根行为测试只替换角色运行时端口。
 
-`renderer/types.js` 定义活动、Cue、场景、时间线、调度器、角色端口和只读帧模型等共享契约。组合根、适配器、行为、目录、时间线、帧引擎和 SVG 入口使用严格 JavaScript 检查。底层几何、特效、眼睛和粒子公式仍由确定性视觉基线保护。
+`renderer/types.js` 定义活动、Cue、场景、时间线、调度器、角色端口和只读帧模型等共享契约。motion、face、gaze、编排和视觉通道分别公开受支持名称的注册表。组合根在创建角色运行时前验证全部场景和预览动作引用。组合根、适配器、行为、目录、时间线、帧引擎和 SVG 入口使用严格 JavaScript 检查。底层几何、特效、眼睛和粒子公式仍由确定性视觉基线保护。
 
 `renderer/view/geometry-data.js` 保存原始形状和眼睛数据。形状路径、轮廓采样、动画公式、弹簧参数和混合顺序属于视觉契约。渲染器测试使用确定的时钟和随机数检查关键 SVG 帧，避免重构改变现有画面。
 

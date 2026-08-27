@@ -1,50 +1,61 @@
 // @ts-check
 /* 有限动画序列。序列只安排场景与一次性动作，不包含几何公式。 */
+import * as steps from "./timeline-steps.js";
+
 /**
  * @param {typeof import("./presets.js")} presets
  */
 function create(presets) {
   const S = presets.scenes;
-  /**
-   * @param {import("../types.js").Scene} scene
-   * @param {number} duration
-   * @param {Omit<import("../types.js").TimelineStep, "scene" | "duration">} [options]
-   * @returns {Readonly<import("../types.js").TimelineStep>}
-   */
-  const step = (scene, duration, options = {}) =>
-    Object.freeze({ scene, duration, ...options });
-  /** @param {...Readonly<import("../types.js").TimelineStep>} steps */
-  const sequence = (...steps) => Object.freeze(steps);
-
   const cues = Object.freeze({
-    engage: sequence(step(S.listening, 350), step(S.curious, 650)),
-    reply_sent: sequence(step(S.sending, 850)),
-    approval_granted: sequence(step(S.happy, 900, { preserveEffect: true })),
-    approval_denied: sequence(step(S.shy, 900, { preserveEffect: true })),
-    error_first: sequence(step(S.surprised, 650, { preserveEffect: true })),
-    error_repeated: sequence(
-      step(S.confused, 1200, { preserveEffect: true }),
+    engage: steps.sequence(
+      steps.scene(S.listening, 350),
+      steps.scene(S.curious, 650),
     ),
-    error_stubborn: sequence(step(S.angry, 1400, { preserveEffect: true })),
-    completed_quick: sequence(
-      step(S.quickHappy, 900, { wink: true }),
-      step(S.notifying, 5000),
+    reply_sent: steps.sequence(steps.scene(S.sending, 850)),
+    approval_granted: steps.sequence(
+      steps.scene(S.happy, 900, { preserveEffect: true }),
     ),
-    completed_normal: sequence(step(S.proud, 1500), step(S.notifying, 5000)),
-    completed_hard: sequence(
-      step(S.celebrate, 2500),
-      step(S.notifying, 5000),
+    approval_denied: steps.sequence(
+      steps.scene(S.shy, 900, { preserveEffect: true }),
     ),
-    run_failed: sequence(step(S.sad, 1800), step(S.notifying, 5000)),
-    run_aborted: sequence(step(S.surprised, 600)),
+    error_first: steps.sequence(
+      steps.scene(S.surprised, 650, { preserveEffect: true }),
+    ),
+    error_repeated: steps.sequence(
+      steps.scene(S.confused, 1200, { preserveEffect: true }),
+    ),
+    error_stubborn: steps.sequence(
+      steps.scene(S.angry, 1400, { preserveEffect: true }),
+    ),
+    completed_quick: steps.sequence(
+      steps.scene(S.quickHappy, 900, { events: [steps.wink()] }),
+      steps.scene(S.notifying, 5000),
+    ),
+    completed_normal: steps.sequence(
+      steps.scene(S.proud, 1500),
+      steps.scene(S.notifying, 5000),
+    ),
+    completed_hard: steps.sequence(
+      steps.scene(S.celebrate, 2500),
+      steps.scene(S.notifying, 5000),
+    ),
+    run_failed: steps.sequence(
+      steps.scene(S.sad, 1800),
+      steps.scene(S.notifying, 5000),
+    ),
+    run_aborted: steps.sequence(steps.scene(S.surprised, 600)),
   });
 
   /** @param {number} direction */
   const fullWake = (direction) =>
-    sequence(
-      step(presets.withDetails(S.stretching, { direction }), 3500),
-      step(S.playful, 700),
-      step(S.happy, 900),
+    steps.sequence(
+      steps.scene(
+        presets.withDetails(S.stretching, { direction }),
+        3500,
+      ),
+      steps.scene(S.playful, 700),
+      steps.scene(S.happy, 900),
     );
 
   return Object.freeze({ cues, fullWake });

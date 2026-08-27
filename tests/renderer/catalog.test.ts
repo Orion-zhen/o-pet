@@ -2,15 +2,36 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import {
+	create as createActivitySequences,
+	focusedRegistry,
+	loopRegistry,
+} from "../../renderer/catalog/activity-sequences.js";
+import { create as createIdleFragments } from "../../renderer/catalog/idle-fragments.js";
 import * as presetsModule from "../../renderer/catalog/presets.js";
+import { create as createRegistry } from "../../renderer/catalog/registry.js";
 import { create as createSequences } from "../../renderer/catalog/sequences.js";
 import { create as createTables } from "../../renderer/catalog/tables.js";
 import { validate } from "../../renderer/catalog/validation.js";
-import { create as createChoreographyController } from "../../renderer/engine/channels/choreography.js";
-import { create as createExpression } from "../../renderer/engine/channels/expression.js";
-import { create as createGaze } from "../../renderer/engine/channels/gaze.js";
-import { create as createMotion } from "../../renderer/engine/channels/motion.js";
+import {
+	create as createChoreographyController,
+	registry as choreographyRegistry,
+} from "../../renderer/engine/channels/choreography.js";
+import {
+	create as createExpression,
+	registry as faceRegistry,
+} from "../../renderer/engine/channels/expression.js";
+import {
+	create as createGaze,
+	registry as gazeRegistry,
+} from "../../renderer/engine/channels/gaze.js";
+import {
+	create as createMotion,
+	registry as motionRegistry,
+} from "../../renderer/engine/channels/motion.js";
 import { create as createMath } from "../../renderer/engine/math.js";
+import { registries as visualRegistries } from "../../renderer/engine/visual-channels.js";
+import { registries as effectRegistries } from "../../renderer/view/effects.js";
 import geometryData from "../../renderer/view/geometry-data.js";
 import { create as createGeometry } from "../../renderer/view/geometry.js";
 
@@ -28,10 +49,7 @@ function createChoreography(random: number): ChoreographyController {
 }
 
 const freshChoreographyContext = (): Record<string, unknown> => ({
-	happyBounced: false,
-	playfulSpun: false,
-	proudFlourished: false,
-	wakingBurst: false,
+	fired: new Set<number>(),
 });
 
 describe("渲染器目录与控制通道", () => {
@@ -152,7 +170,9 @@ describe("渲染器目录与控制通道", () => {
 			particles: { id: "wide-spin-belts" },
 			camera: { id: null },
 		});
-		expect(sequences.cues.error_repeated?.[0]?.preserveEffect).toBe(true);
+		const errorStep = sequences.cues.error_repeated?.[0];
+		expect(errorStep?.kind).toBe("scene");
+		expect(errorStep?.kind === "scene" && errorStep.preserveEffect).toBe(true);
 		for (const cue of [
 			"completed_quick", "completed_normal", "completed_hard", "run_failed",
 		] as const) {
@@ -177,8 +197,77 @@ describe("渲染器目录与控制通道", () => {
 		});
 
 		const tables = createTables();
-		expect(() => validate(actionNames, presetsModule, tables)).not.toThrow();
-		expect(() => validate([...actionNames, "missing-action"], presetsModule, tables)).toThrow();
+		const registries = {
+			motion: motionRegistry,
+			face: faceRegistry,
+			gaze: gazeRegistry,
+			choreography: choreographyRegistry,
+			shape: createRegistry("shape", Object.keys(geometryData.shapes)),
+			form: effectRegistries.form,
+			decoration: effectRegistries.decoration,
+			particles: visualRegistries.particles,
+			camera: tables.CAMERA_REGISTRY,
+			badge: visualRegistries.badge,
+		};
+		expect(actionNames).toEqual(Object.keys(presetsModule.actions));
+		expect(() => validate(presetsModule, tables, registries)).not.toThrow();
+		expect(() => presetsModule.fromState("missing-action")).toThrow(
+			"未知动画动作",
+		);
+		expect(() => presetsModule.defineScene("invalid-effect", {
+			motion: "idle",
+			face: "idle",
+			expression: "idle",
+			gaze: "idle",
+			effect: "missing-effect",
+		})).toThrow("未知 effect recipe");
+
+		const invalid = presetsModule.defineScene("invalid", {
+			motion: "missing-motion",
+			face: "idle",
+			expression: "idle",
+			gaze: "idle",
+		});
+		const invalidCatalog = {
+			...presetsModule,
+			scenes: { invalid },
+			actions: {},
+		};
+		expect(() => validate(invalidCatalog, tables, registries)).toThrow(
+			"未知 motion",
+		);
+	});
+
+	it("活动和空闲动画内容可独立构建为有效步骤链", () => {
+		const activitySequences = createActivitySequences({
+			random: () => 0.5,
+			scenes: presetsModule.scenes,
+		});
+		const activitySteps = [
+			...focusedRegistry.values.map((name) => activitySequences.focused(name)),
+			...loopRegistry.values.map((name) => activitySequences.loop(name)),
+			activitySequences.terminal(true),
+			activitySequences.terminalBored(),
+			activitySequences.approval(false, "listening"),
+		].flat();
+		expect(activitySteps.length).toBeGreaterThan(0);
+		expect(activitySteps.every((step) => step.kind === "scene")).toBe(true);
+
+		const idleFragments = createIdleFragments({
+			chooseDirection: () => 1,
+			presets: presetsModule,
+			random: () => 0.5,
+			randomDelay: ([minimum]) => minimum,
+			scenes: presetsModule.scenes,
+		});
+		expect(new Set(idleFragments.map(({ name }) => name)).size).toBe(
+			idleFragments.length,
+		);
+		expect(
+			idleFragments.every((fragment) =>
+				fragment.build().every((step) => step.kind === "scene"),
+			),
+		).toBe(true);
 	});
 
 	it("happy 进入后只触发一次弹跳", () => {
@@ -204,6 +293,17 @@ describe("渲染器目录与控制通道", () => {
 			expect.objectContaining({ channel: "action", type }),
 		]);
 		expect(choreography.sample("playful", 1, context)).toEqual([]);
+	});
+
+	it("waking 事件轨道在时间窗口内只触发一次粒子爆发", () => {
+		const choreography = createChoreography(0.5);
+		const context = freshChoreographyContext();
+
+		expect(choreography.sample("waking", 0.499, context)).toEqual([]);
+		expect(choreography.sample("waking", 0.5, context)).toEqual([
+			expect.objectContaining({ channel: "particles", type: "burst" }),
+		]);
+		expect(choreography.sample("waking", 0.8, context)).toEqual([]);
 	});
 
 	it("proud 进入后固定触发一次旋转弹跳", () => {

@@ -1,5 +1,12 @@
 // @ts-check
 /* 视觉通道运行时。独立管理形变、装饰、粒子、相机和徽标的过渡状态。 */
+import { create as createRegistry } from "../catalog/registry.js";
+
+const registries = Object.freeze({
+  particles: createRegistry("particles", ["spin-belts", "wide-spin-belts"]),
+  badge: createRegistry("badge", ["notification"]),
+});
+
 /**
  * @typedef {Omit<import("../types.js").VisualFrame, "formBlend" | "formMix" | "decorationBlend" | "decorationMix" | "cameraBlend" | "cameraMix" | "notify" | "humDots" | "formTurn"> & { formBlend: import("../types.js").Spring, formMix: import("../types.js").Spring, decorationBlend: import("../types.js").Spring, decorationMix: import("../types.js").Spring, cameraBlend: import("../types.js").Spring, cameraMix: import("../types.js").Spring, notify: import("../types.js").Spring, humDots: import("../types.js").Spring, formTurn: import("../types.js").Spring, formTurnAccumulator: number, formTurnDirection: number, formVisible: boolean, formTarget: string | null, formRest: boolean, formRestAt: number }} VisualState
  * @param {{ effects: { CYCLE: ReadonlySet<string>, CYCLE_ON: Record<string, number>, CYCLE_OFF: number }, math: import("../types.js").MathPort, renderer: Pick<import("../types.js").RendererPort, "resetInk" | "resetPlayback">, springs: { notify: [number, number], humDots: [number, number], visual: [number, number], visualMix: [number, number], formTurn: [number, number] }, now: number }} options
@@ -288,4 +295,4 @@ function create(options) {
   });
 }
 
-export { create };
+export { create, registries };

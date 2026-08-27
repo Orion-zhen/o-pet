@@ -238,12 +238,7 @@ function create(dependencies, options) {
           stretchBlinked: false,
           quizzicalBlinked: false,
         },
-        choreography: {
-          happyBounced: false,
-          playfulSpun: false,
-          proudFlourished: false,
-          wakingBurst: false,
-        },
+        choreography: { fired: new Set() },
       };
     }
 

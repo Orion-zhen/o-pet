@@ -1,52 +1,23 @@
 // @ts-check
-/* Agent 活动行为。只把一个活动展开为可取消的动画时间线。 */
+/* Agent 活动导演。只管理活动生命周期和依赖运行状态的分支。 */
+import {
+  create as createSequences,
+  focusedRegistry,
+  loopRegistry,
+} from "../catalog/activity-sequences.js";
+
 /**
- * @typedef {{ name: string, scene: import("../types.js").Scene, weight: number, duration: readonly [number, number] }} Accent
  * @typedef {Exclude<import("../types.js").Activity, "idle">} WorkActivity
  * @param {{ now: () => number, random: () => number, scenes: typeof import("../catalog/presets.js").scenes, timeline: import("../types.js").Timeline }} options
  */
 function create(options) {
   const { now, random, scenes, timeline } = options;
-  /** @type {Map<string, string>} */
-  const lastAccent = new Map();
+  const sequences = createSequences({ random, scenes });
   /** @type {WorkActivity | null} */
   let activity = null;
   let activityAt = 0;
   let lastProgressAt = -Infinity;
   let generation = 0;
-
-  /** @param {readonly [number, number]} range */
-  const randomDelay = ([minimum, maximum]) =>
-    minimum + Math.floor(random() * (maximum - minimum + 1));
-
-  /**
-   * @param {string} activityName
-   * @param {readonly Accent[]} candidates
-   * @returns {Accent}
-   */
-  function chooseAccent(activityName, candidates) {
-    const previous = lastAccent.get(activityName);
-    const available =
-      candidates.length > 1
-        ? candidates.filter((candidate) => candidate.name !== previous)
-        : candidates;
-    const total = available.reduce(
-      (sum, candidate) => sum + candidate.weight,
-      0,
-    );
-    let target = random() * total;
-    let selected = available[available.length - 1];
-    for (const candidate of available) {
-      target -= candidate.weight;
-      if (target <= 0) {
-        selected = candidate;
-        break;
-      }
-    }
-    if (selected === undefined) throw new Error(`活动 ${activityName} 没有强调场景`);
-    lastAccent.set(activityName, selected.name);
-    return selected;
-  }
 
   /** @param {WorkActivity} expected @param {number} token */
   function stillIn(expected, token) {
@@ -60,103 +31,26 @@ function create(options) {
     };
   }
 
-  /** @param {number} token */
-  function runThinking(token) {
-    const accent = chooseAccent("thinking", [
-      {
-        name: "humming",
-        scene: scenes.humming,
-        weight: 0.4,
-        duration: [6000, 9000],
-      },
-      {
-        name: "thinking-alt",
-        scene: scenes["thinking-alt"],
-        weight: 0.36,
-        duration: [6000, 9000],
-      },
-      {
-        name: "deep",
-        scene: scenes.deepThinking,
-        weight: 0.16,
-        duration: [3500, 5500],
-      },
-      {
-        name: "radar",
-        scene: scenes.radar,
-        weight: 0.08,
-        duration: [3200, 4800],
-      },
-    ]);
-    timeline.play(
-      "activity",
-      [
-        { scene: scenes.thinking, duration: randomDelay([3000, 6000]) },
-        { scene: accent.scene, duration: randomDelay(accent.duration) },
-      ],
-      { onComplete: repeat("thinking", token) },
-    );
-  }
-
-  /** @param {number} token */
-  function runSearching(token) {
-    const accent = chooseAccent("searching", [
-      {
-        name: "curious",
-        scene: scenes.curious,
-        weight: 0.45,
-        duration: [1400, 2400],
-      },
-      {
-        name: "radar",
-        scene: scenes.radar,
-        weight: 0.35,
-        duration: [2500, 4000],
-      },
-      {
-        name: "thinking",
-        scene: scenes.deepThinking,
-        weight: 0.2,
-        duration: [1800, 3000],
-      },
-    ]);
-    timeline.play(
-      "activity",
-      [
-        { scene: scenes.searching, duration: randomDelay([3500, 6500]) },
-        { scene: accent.scene, duration: randomDelay(accent.duration) },
-      ],
-      { onComplete: repeat("searching", token) },
-    );
+  /** @param {"thinking" | "searching"} name @param {number} token */
+  function runFocused(name, token) {
+    timeline.play("activity", sequences.focused(name), {
+      onComplete: repeat(name, token),
+    });
   }
 
   /** @param {number} token @param {boolean} initial */
   function runTerminal(token, initial) {
-    const steps = [];
-    if (initial)
-      steps.push({
-        scene: scenes.terminalTyping,
-        duration: randomDelay([650, 1100]),
-      });
-    steps.push({
-      scene: scenes.loading,
-      duration: randomDelay([4500, 7000]),
-    });
-    timeline.play("activity", steps, {
+    timeline.play("activity", sequences.terminal(initial), {
       onComplete() {
         if (!stillIn("terminal", token)) return;
         const elapsed = now() - activityAt;
         const hasRecentOutput = now() - lastProgressAt < 5000;
         if (!hasRecentOutput && elapsed >= 20_000 && random() < 0.4) {
-          timeline.play(
-            "activity",
-            [{ scene: scenes.bored, duration: randomDelay([1400, 2400]) }],
-            {
-              onComplete: () => {
-                if (stillIn("terminal", token)) runTerminal(token, false);
-              },
+          timeline.play("activity", sequences.terminalBored(), {
+            onComplete: () => {
+              if (stillIn("terminal", token)) runTerminal(token, false);
             },
-          );
+          });
         } else {
           runTerminal(token, false);
         }
@@ -166,98 +60,39 @@ function create(options) {
 
   /** @param {number} token @param {boolean} initial */
   function runApproval(token, initial) {
-    const waiting =
-      now() - activityAt >= 45_000 ? scenes.bored : scenes.listening;
-    timeline.play(
-      "activity",
-      initial
-        ? [{ scene: scenes.alerting, duration: 1600 }]
-        : [
-            { scene: waiting, duration: randomDelay([15_000, 25_000]) },
-            { scene: scenes.notifying, duration: 5000 },
-          ],
-      {
-        onComplete() {
-          if (stillIn("awaiting_approval", token)) runApproval(token, false);
-        },
+    const waiting = now() - activityAt >= 45_000 ? "bored" : "listening";
+    timeline.play("activity", sequences.approval(initial, waiting), {
+      onComplete() {
+        if (stillIn("awaiting_approval", token)) runApproval(token, false);
       },
-    );
+    });
   }
 
   /** @param {WorkActivity} name @param {number} token */
   function run(name, token) {
     if (!stillIn(name, token)) return;
-    switch (name) {
-      case "thinking":
-        runThinking(token);
-        break;
-      case "searching":
-        runSearching(token);
-        break;
-      case "coding":
-        timeline.play(
-          "activity",
-          [
-            { scene: scenes.coding, duration: randomDelay([10_000, 16_000]) },
-            {
-              scene: scenes.reviewing,
-              duration: randomDelay([2200, 3200]),
-              spin: { turns: 1 },
-            },
-          ],
-          { onComplete: repeat("coding", token) },
-        );
-        break;
-      case "terminal":
-        runTerminal(token, true);
-        break;
-      case "receiving":
-        timeline.play(
-          "activity",
-          [
-            { scene: scenes.receiving, duration: randomDelay([5000, 8000]) },
-            { scene: scenes.curious, duration: randomDelay([1200, 2200]) },
-          ],
-          { onComplete: repeat("receiving", token) },
-        );
-        break;
-      case "consulting":
-        timeline.play(
-          "activity",
-          [
-            { scene: scenes.consulting, duration: randomDelay([4000, 6500]) },
-            {
-              scene: scenes.deepThinking,
-              duration: randomDelay([1800, 3000]),
-            },
-          ],
-          { onComplete: repeat("consulting", token) },
-        );
-        break;
-      case "tooling":
-        timeline.play(
-          "activity",
-          [
-            { scene: scenes.tooling, duration: randomDelay([4500, 7000]) },
-            { scene: scenes.loading, duration: randomDelay([3000, 5000]) },
-          ],
-          { onComplete: repeat("tooling", token) },
-        );
-        break;
-      case "replying":
-        timeline.play(
-          "activity",
-          [
-            { scene: scenes.replying, duration: randomDelay([6000, 10_000]) },
-            { scene: scenes.listening, duration: randomDelay([700, 1200]) },
-          ],
-          { onComplete: repeat("replying", token) },
-        );
-        break;
-      case "awaiting_approval":
-        runApproval(token, true);
-        break;
+    if (focusedRegistry.has(name)) {
+      runFocused(
+        /** @type {"thinking" | "searching"} */ (name),
+        token,
+      );
+      return;
     }
+    if (loopRegistry.has(name)) {
+      timeline.play("activity", sequences.loop(name), {
+        onComplete: repeat(name, token),
+      });
+      return;
+    }
+    if (name === "terminal") {
+      runTerminal(token, true);
+      return;
+    }
+    if (name === "awaiting_approval") {
+      runApproval(token, true);
+      return;
+    }
+    throw new Error(`活动缺少动画配方: ${name}`);
   }
 
   /** @param {WorkActivity} name @param {number} startedAt */

@@ -1,9 +1,11 @@
 // @ts-check
 /* 空闲行为导演。独立管理空闲深度、片段历史、冷却和能量。 */
+import { create as createFragments } from "../catalog/idle-fragments.js";
+import * as timelineSteps from "../catalog/timeline-steps.js";
+
 /**
  * @typedef {{ startedAt: number, relaxedAt: number, drowsyAt: number, sleepingAt: number, wakeAt: number }} IdleSession
  * @typedef {"low" | "medium" | "high"} Energy
- * @typedef {{ name: string, phases: import("../types.js").IdleDepth[], energy: Energy, weight: number, cooldown: number, build: () => import("../types.js").TimelineStep[] }} Fragment
  * @param {{ now: () => number, presets: import("../types.js").PresetCatalog, random: () => number, scenes: typeof import("../catalog/presets.js").scenes, timeline: import("../types.js").Timeline }} options
  */
 function create(options) {
@@ -34,10 +36,7 @@ function create(options) {
   const randomDelay = ([minimum, maximum]) =>
     minimum + Math.floor(random() * (maximum - minimum + 1));
   const HAPPY_SCENE_MS = 1400;
-  const PLAYFUL_SCENE_MS = 3000;
-  const PROUD_SCENE_MS = 2200;
   const QUICK_HAPPY_SCENE_MS = 900;
-  const SEARCHING_SCENE_MS = 3500;
   const STRETCHING_SCENE_MS = 3500;
 
   /** @param {string} key */
@@ -50,286 +49,13 @@ function create(options) {
 
   /** @param {import("../types.js").Preset} base @param {import("../types.js").SceneDetails} details */
   const withDetails = (base, details) => presets.withDetails(base, details);
-
-  const fragments = /** @type {Fragment[]} */ ([
-    {
-      name: "notice",
-      phases: ["awake", "relaxed"],
-      energy: "low",
-      weight: 5,
-      cooldown: 20_000,
-      build() {
-        const direction = chooseDirection("notice");
-        const found = random() < 0.35;
-        return [
-          {
-            scene: withDetails(scenes.gazeListening, { direction }),
-            duration: 250,
-          },
-          {
-            scene: withDetails(scenes.listening, { direction }),
-            duration: 450,
-          },
-          {
-            scene: withDetails(scenes.curious, { direction }),
-            duration: 900,
-          },
-          found
-            ? {
-                scene: withDetails(scenes.playful, { direction }),
-                duration: PLAYFUL_SCENE_MS,
-                pounce: { direction, strength: 0.4 },
-              }
-            : {
-                scene: withDetails(scenes.idle, { direction }),
-                duration: 700,
-              },
-          ...(found
-            ? [{ scene: scenes.happy, duration: HAPPY_SCENE_MS }]
-            : []),
-        ];
-      },
-    },
-    {
-      name: "patrol",
-      phases: ["awake", "relaxed"],
-      energy: "low",
-      weight: 3,
-      cooldown: 30_000,
-      build() {
-        const direction = chooseDirection("patrol");
-        return [
-          {
-            scene: withDetails(scenes.gazeSearching, { direction }),
-            duration: 250,
-          },
-          {
-            scene: withDetails(scenes.searching, { direction }),
-            duration: SEARCHING_SCENE_MS,
-          },
-          {
-            scene: withDetails(scenes.searching, { direction: -direction }),
-            duration: 650,
-          },
-          { scene: scenes.proud, duration: PROUD_SCENE_MS },
-        ];
-      },
-    },
-    {
-      name: "pounce",
-      phases: ["awake"],
-      energy: "medium",
-      weight: 2,
-      cooldown: 35_000,
-      build() {
-        const direction = chooseDirection("pounce");
-        const success = random() < 0.55;
-        return [
-          {
-            scene: withDetails(scenes.gazeCurious, { direction }),
-            duration: 250,
-          },
-          {
-            scene: withDetails(scenes.curious, { direction }),
-            duration: 400,
-          },
-          {
-            scene: withDetails(scenes.playful, { direction }),
-            duration: PLAYFUL_SCENE_MS,
-          },
-          {
-            scene: withDetails(scenes.jumping, { direction }),
-            duration: 1050,
-            pounce: { direction, strength: 1 },
-          },
-          ...(success
-            ? [{ scene: scenes.happy, duration: HAPPY_SCENE_MS }]
-            : [
-                { scene: scenes.surprised, duration: 600 },
-                { scene: scenes.shy, duration: 900 },
-              ]),
-        ];
-      },
-    },
-    {
-      name: "bounce-practice",
-      phases: ["awake"],
-      energy: "high",
-      weight: 1.4,
-      cooldown: 75_000,
-      build() {
-        const failed = random() < 0.18;
-        return [
-          { scene: scenes.playful, duration: PLAYFUL_SCENE_MS },
-          { scene: scenes.jumping, duration: 1800, hop: true },
-          ...(failed
-            ? [
-                { scene: scenes.surprised, duration: 650 },
-                { scene: scenes.shy, duration: 800 },
-              ]
-            : [{ scene: scenes.happy, duration: HAPPY_SCENE_MS }]),
-        ];
-      },
-    },
-    {
-      name: "spin-challenge",
-      phases: ["awake"],
-      energy: "high",
-      weight: 0.9,
-      cooldown: 90_000,
-      build() {
-        const direction = chooseDirection("spin");
-        const result = random();
-        const ending =
-          result < 0.62
-            ? [{ scene: scenes.proud, duration: PROUD_SCENE_MS }]
-            : result < 0.96
-              ? [{ scene: scenes.shy, duration: 1300 }]
-              : [
-                  {
-                    scene: scenes.quickHappy,
-                    duration: 900,
-                    wink: true,
-                    pounce: { direction, strength: 0.35 },
-                  },
-                ];
-        return [
-          {
-            scene: withDetails(scenes.playful, { direction: -direction }),
-            duration: PLAYFUL_SCENE_MS,
-          },
-          {
-            scene: withDetails(scenes.playful, { direction }),
-            duration: PLAYFUL_SCENE_MS,
-          },
-          ...ending,
-        ];
-      },
-    },
-    {
-      name: "stretch",
-      phases: ["awake", "relaxed"],
-      energy: "medium",
-      weight: 2,
-      cooldown: 40_000,
-      build() {
-        const direction = chooseDirection("stretch");
-        return [
-          {
-            scene: withDetails(scenes.stretching, { direction }),
-            duration: STRETCHING_SCENE_MS,
-          },
-          { scene: scenes.happy, duration: HAPPY_SCENE_MS },
-        ];
-      },
-    },
-    {
-      name: "quiet-observe",
-      phases: ["relaxed"],
-      energy: "low",
-      weight: 4,
-      cooldown: 18_000,
-      build() {
-        const direction = chooseDirection("observe");
-        return [
-          {
-            scene: withDetails(scenes.listening, { direction }),
-            duration: 1200,
-          },
-          { scene: scenes.idle, duration: 900 },
-        ];
-      },
-    },
-    {
-      name: "self-entertain",
-      phases: ["relaxed"],
-      energy: "medium",
-      weight: 2.2,
-      cooldown: 40_000,
-      build: () => [
-        { scene: scenes.bored, duration: 1600 },
-        { scene: scenes.curious, duration: 900 },
-        { scene: scenes.playful, duration: PLAYFUL_SCENE_MS },
-      ],
-    },
-    {
-      name: "sleepy-nod",
-      phases: ["drowsy"],
-      energy: "low",
-      weight: 5,
-      cooldown: 20_000,
-      build: () => [
-        { scene: scenes.drowsy, duration: 2200 },
-        { scene: scenes.surprised, duration: 600 },
-        { scene: scenes.drowsy, duration: 900 },
-      ],
-    },
-    {
-      name: "resist-sleep",
-      phases: ["drowsy"],
-      energy: "medium",
-      weight: 2.2,
-      cooldown: 40_000,
-      build() {
-        const direction = chooseDirection("sleepy-stretch");
-        return [
-          {
-            scene: withDetails(scenes.stretching, { direction }),
-            duration: STRETCHING_SCENE_MS,
-          },
-          { scene: scenes.happy, duration: HAPPY_SCENE_MS },
-          { scene: scenes.drowsy, duration: 900 },
-        ];
-      },
-    },
-    {
-      name: "half-awake",
-      phases: ["drowsy"],
-      energy: "low",
-      weight: 2.5,
-      cooldown: 30_000,
-      build() {
-        const direction = chooseDirection("half-awake");
-        return [
-          {
-            scene: withDetails(scenes.sleepyCurious, { direction }),
-            duration: 1600,
-          },
-          { scene: scenes.drowsy, duration: 1000 },
-        ];
-      },
-    },
-    {
-      name: "sleepy-play",
-      phases: ["drowsy"],
-      energy: "medium",
-      weight: 1,
-      cooldown: 70_000,
-      build: () => [
-        { scene: scenes.playful, duration: PLAYFUL_SCENE_MS },
-        { scene: scenes.drowsy, duration: 1300 },
-      ],
-    },
-    ...["float", "curl", "twitch"].map((variant) => ({
-      name: `dream-${variant}`,
-      phases: ["sleeping"],
-      energy: "low",
-      weight: 1,
-      cooldown: 35_000,
-      build() {
-        return [
-          {
-            scene: withDetails(scenes.dreaming, {
-              direction:
-                variant === "curl" ? chooseDirection("dream-curl") : 0,
-              variant,
-            }),
-            duration: randomDelay([6000, 10_000]),
-          },
-        ];
-      },
-    })),
-  ]);
+  const fragments = createFragments({
+    chooseDirection,
+    presets,
+    random,
+    randomDelay,
+    scenes,
+  });
 
   /** @param {number} startedAt @returns {IdleSession} */
   function createSession(startedAt) {
@@ -400,11 +126,11 @@ function create(options) {
   function selectFragment() {
     const at = now();
     const recent = new Set(recentFragments.slice(-3));
-    /** @param {Fragment} fragment */
+    /** @param {(typeof fragments)[number]} fragment */
     const supportsEnergy = (fragment) =>
       fragment.energy !== "high" ||
       (energyBudget >= 3 && previousEnergy !== "high");
-    /** @param {Fragment} fragment */
+    /** @param {(typeof fragments)[number]} fragment */
     const cooled = (fragment) =>
       at - (fragmentLastAt.get(fragment.name) ?? -Infinity) >=
       fragment.cooldown;
@@ -465,17 +191,15 @@ function create(options) {
     timeline.play(
       "idle",
       [
-        {
-          scene: withDetails(scenes.stretching, { direction }),
-          duration: STRETCHING_SCENE_MS,
-        },
+        timelineSteps.scene(
+          withDetails(scenes.stretching, { direction }),
+          STRETCHING_SCENE_MS,
+        ),
         delighted
-          ? {
-              scene: scenes.quickHappy,
-              duration: QUICK_HAPPY_SCENE_MS,
-              wink: true,
-            }
-          : { scene: scenes.happy, duration: HAPPY_SCENE_MS },
+          ? timelineSteps.scene(scenes.quickHappy, QUICK_HAPPY_SCENE_MS, {
+              events: [timelineSteps.wink()],
+            })
+          : timelineSteps.scene(scenes.happy, HAPPY_SCENE_MS),
       ],
       {
         onComplete() {
@@ -501,7 +225,7 @@ function create(options) {
     const boundary = nextBoundary();
     delay = Math.min(delay, boundary - now());
     const previousDepth = depth;
-    timeline.play("idle", [{ scene: baseScene(), duration: delay }], {
+    timeline.play("idle", [timelineSteps.scene(baseScene(), delay)], {
       onComplete() {
         if (generation !== token || phase !== "idle") return;
         syncDepth();
@@ -555,11 +279,15 @@ function create(options) {
     lastHoverAt = now();
     /** @type {import("../types.js").TimelineStep[]} */
     const steps = [
-      { scene: scenes.curious, duration: 500 },
-      { scene: scenes.front, duration: 1300 },
+      timelineSteps.scene(scenes.curious, 500),
+      timelineSteps.scene(scenes.front, 1300),
     ];
     if (random() < 0.18)
-      steps.push({ scene: scenes.quickHappy, duration: 700, wink: true });
+      steps.push(
+        timelineSteps.scene(scenes.quickHappy, 700, {
+          events: [timelineSteps.wink()],
+        }),
+      );
     phase = "fragment";
     const token = ++generation;
     timeline.play("idle", steps, {

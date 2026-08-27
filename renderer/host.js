@@ -7,8 +7,11 @@ import * as O_PET_CUES from "./behaviors/cues.js";
 import * as O_PET_IDLE from "./behaviors/idle.js";
 import * as O_PET_INTERACTION from "./behaviors/interaction.js";
 import * as OPET_PRESETS from "./catalog/presets.js";
+import { create as createRegistry } from "./catalog/registry.js";
 import * as OPET_SEQUENCES from "./catalog/sequences.js";
 import * as OPET_TABLES from "./catalog/tables.js";
+import * as OPET_STEPS from "./catalog/timeline-steps.js";
+import * as OPET_VALIDATION from "./catalog/validation.js";
 import * as OPET_ACTIONS from "./engine/actions.js";
 import * as OPET_CHOREOGRAPHY from "./engine/channels/choreography.js";
 import * as OPET_EXPRESSION from "./engine/channels/expression.js";
@@ -50,14 +53,26 @@ function create(options, overrides = {}) {
   const random = options.random;
   const motionQuery = options.motionQuery;
   const viewportWidth = options.viewportWidth;
+  const presets = OPET_PRESETS;
+  const tables = OPET_TABLES.create();
+  OPET_VALIDATION.validate(presets, tables, {
+    motion: OPET_MOTION.registry,
+    face: OPET_EXPRESSION.registry,
+    gaze: OPET_GAZE.registry,
+    choreography: OPET_CHOREOGRAPHY.registry,
+    shape: createRegistry("shape", Object.keys(OPET_GEO.shapes)),
+    form: OPET_EFFECTS.registries.form,
+    decoration: OPET_EFFECTS.registries.decoration,
+    particles: O_PET_VISUAL_CHANNELS.registries.particles,
+    camera: tables.CAMERA_REGISTRY,
+    badge: O_PET_VISUAL_CHANNELS.registries.badge,
+  });
   const scheduler = O_PET_SCHEDULER.create({
     timerClock,
     frameClock,
     now: rawNow,
   });
   const now = scheduler.now;
-  const presets = OPET_PRESETS;
-  const tables = OPET_TABLES.create();
   const scenes = presets.scenes;
   const sequences = OPET_SEQUENCES.create(presets);
   const math = OPET_MATH.create(random);
@@ -179,7 +194,7 @@ function create(options, overrides = {}) {
     hostState.transition("waking");
     timeline.play(
       "protected",
-      [{ scene: scenes.waking, duration: WAKING_MS }],
+      [OPET_STEPS.scene(scenes.waking, WAKING_MS)],
       {
         onComplete: finishProtected,
       },
@@ -275,8 +290,8 @@ function create(options, overrides = {}) {
     timeline.play(
       "preview",
       [
-        { state: name, duration: ACTION_PLAY_MS },
-        { pause: true, duration: ACTION_PAUSE_MS },
+        OPET_STEPS.state(name, ACTION_PLAY_MS),
+        OPET_STEPS.pause(ACTION_PAUSE_MS),
       ],
       { loop: true },
     );
@@ -355,7 +370,7 @@ function create(options, overrides = {}) {
   if (doc.hidden) scheduler.pause("hidden");
   timeline.play(
     "protected",
-    [{ scene: scenes.spawning, duration: STARTUP_MS }],
+    [OPET_STEPS.scene(scenes.spawning, STARTUP_MS)],
     {
       onComplete: finishProtected,
     },

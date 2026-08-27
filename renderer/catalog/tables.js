@@ -1,5 +1,7 @@
 // @ts-check
 /* 眼形播放列表、眨眼节奏、弹簧参数和视图配置。 */
+import { create as createRegistry } from "./registry.js";
+
 function create() {
   /** @type {Record<string, number[]>} */
   const EYE_PLAYLIST = {
@@ -226,6 +228,7 @@ function create() {
     bang: 1.28,
     standby: 1.75,
   };
+  const CAMERA_REGISTRY = createRegistry("camera", Object.keys(CAMERA_ZOOM));
   /** @param {string | null} kind @param {number} scale */
   const cameraZoomFor = (kind, scale) =>
     kind == null
@@ -242,6 +245,7 @@ function create() {
     POSE,
     POSE_HOME,
     WINK_STATES,
+    CAMERA_REGISTRY,
     poseScale,
     shapeEyeScale,
     VIEW_HALF,

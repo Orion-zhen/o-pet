@@ -1,4 +1,30 @@
 /* 身体形变和装饰渲染器。粒子与基础几何由独立模块提供。 */
+import { create as createRegistry } from "../catalog/registry.js";
+
+const EFFECT_VALUES = Object.freeze([
+  "dots",
+  "orbit",
+  "radar",
+  "gather",
+  "wave",
+  "send",
+  "receive",
+  "dock",
+  "ball",
+  "whirl",
+  "pencil",
+  "bang",
+  "standby",
+]);
+const registries = Object.freeze({
+  form: createRegistry("form", EFFECT_VALUES),
+  decoration: createRegistry("decoration", [
+    ...EFFECT_VALUES,
+    "thought-pulse",
+    "hum-dots",
+  ]),
+});
+
 function create(dependencies) {
   const NS = "http://www.w3.org/2000/svg";
   const CYCLE = new Set(["gather"]);
@@ -739,4 +765,4 @@ function create(dependencies) {
   });
 }
 
-export { create };
+export { create, registries };

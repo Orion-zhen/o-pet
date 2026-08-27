@@ -19,7 +19,15 @@
 
 /** @typedef {{ channel: ChannelName, id: string | null }} Control */
 /** @typedef {{ id: string, channels: Record<ChannelName, Control>, choreography?: string | null }} Preset */
+/** @typedef {{ motion: string, face: string, expression: string, gaze: string, shape?: string | null, effect?: string | null, choreography?: string | null }} SceneDefinition */
 /** @typedef {{ direction?: number, variant?: string }} SceneDetails */
+/** @typedef {{ has(value: string): boolean, values: readonly string[] }} IdRegistry */
+/** @typedef {{ motion: IdRegistry, face: IdRegistry, gaze: IdRegistry, choreography: IdRegistry, shape: IdRegistry, form: IdRegistry, decoration: IdRegistry, particles: IdRegistry, camera: IdRegistry, badge: IdRegistry }} AnimationRegistries */
+/** @typedef {{ kind: "wink" } | { kind: "spin", turns: number, direction?: number } | { kind: "hop" } | { kind: "pounce", direction?: number, strength: number }} TimelineEvent */
+/** @typedef {{ kind: "scene", duration: number, scene: Scene, events?: readonly TimelineEvent[], preserveEffect?: boolean, restart?: boolean } | { kind: "state", duration: number, state: string } | { kind: "pause", duration: number }} TimelineStep */
+/** @typedef {{ loop?: boolean, onComplete?: () => void }} TimelineOptions */
+/** @typedef {{ cancel(owner?: string): void, destroy(): void, play(owner: string, steps: readonly TimelineStep[], options: TimelineOptions): void }} Timeline */
+
 /** @typedef {{ preset: Preset, direction?: number, variant?: string }} DetailedPreset */
 /** @typedef {Preset | DetailedPreset} Scene */
 /** @typedef {{ form: string | null, decoration: string | null, particles: string | null, camera: string | null, badge: string | null }} EffectRecipe */
@@ -28,14 +36,9 @@
 /** @typedef {{ eyeTo?: number, eyeMorphX?: number, blinkX?: number, allowAmbientSpin?: boolean, direction?: number, variant?: string | null, reduceMotion?: boolean, slumpAt?: number }} ControllerOptions */
 /** @typedef {{ nodUntil: number, nodEnd: number, idleShiftAt: number, idleShiftEnd: number, idleShiftDuration: number, idleShiftDirection: number, sleepTwitchAt: number, sleepTwitchEnd: number, angryShakeUntil: number, impulseAt: number, slumpAt: number, stAt: number, dragCycle: number, notifyPop: boolean }} MotionContext */
 /** @typedef {{ wakingBlinked: boolean, stretchBlinked: boolean, quizzicalBlinked: boolean }} ExpressionContext */
-/** @typedef {{ happyBounced: boolean, playfulSpun: boolean, proudFlourished: boolean, wakingBurst: boolean }} ChoreographyContext */
+/** @typedef {{ fired: Set<number> }} ChoreographyContext */
 /** @typedef {{ motion: MotionContext, expression: ExpressionContext, choreography: ChoreographyContext }} ControllerContext */
 /** @typedef {{ channel: "action", type: string, direction?: number, turns?: number } | { channel: "particles", type: "burst", count: number, strength: number }} ChoreographyEvent */
-/** @typedef {{ direction?: number, strength: number }} Pounce */
-/** @typedef {{ turns: number, direction?: number }} Spin */
-/** @typedef {{ duration: number, scene?: Scene, state?: string, pause?: boolean, wink?: boolean, spin?: Spin, hop?: boolean, pounce?: Pounce, preserveEffect?: boolean, restart?: boolean }} TimelineStep */
-/** @typedef {{ loop?: boolean, onComplete?: () => void }} TimelineOptions */
-/** @typedef {{ cancel(owner?: string): void, destroy(): void, play(owner: string, steps: readonly TimelineStep[], options: TimelineOptions): void }} Timeline */
 
 /** @typedef {{ setTimeout(callback: () => void, delay: number): unknown, clearTimeout(handle: unknown): void }} TimerClock */
 /** @typedef {{ requestAnimationFrame(callback: (time: number) => void): unknown, cancelAnimationFrame(handle: unknown): void }} FrameClock */
@@ -93,6 +96,7 @@
 /**
  * @typedef {object} PresetCatalog
  * @property {Readonly<Record<string, Preset>>} scenes
+ * @property {Readonly<Record<string, Preset>>} actions
  * @property {(state: string) => Preset} fromState
  * @property {(preset: Preset, details: SceneDetails) => DetailedPreset} withDetails
  * @property {(base: Preset, replacement: Preset, channelNames: readonly ChannelName[]) => Preset} replaceChannels
@@ -100,7 +104,7 @@
  */
 
 /** @typedef {{ EYE_PLAYLIST: Record<string, readonly number[]>, EYE_HOLD_MS: Record<string, readonly [number, number]>, BLINK_MS: Record<string, readonly [number, number] | null> }} AnimationTables */
-/** @typedef {AnimationTables & { THINKING_ALT: { cycleMs: number, dotStarts: readonly number[], dotDuration: number, mergeAt: number, absorbAt: number }, SPRINGS: { spin: [number, number], x: [number, number], y: [number, number], squash: [number, number], blink: [number, number], eyeScale: [number, number], front: [number, number], gazeX: [number, number], gazeY: [number, number], notify: [number, number], humDots: [number, number], visual: [number, number], visualMix: [number, number], shape: [number, number], formTurn: [number, number], spinTurn: [number, number] }, FACE_TUNE: { size: number, gap: number, height: number, eyeWidth: number, eyeHeight: number }, POSE: { turn: number, tilt: number, roll: number, scale: number }, POSE_HOME: { turn: number, tilt: number, roll: number }, WINK_STATES: ReadonlySet<string>, poseScale(name: string): number, shapeEyeScale(name: string): number }} RuntimeTables */
+/** @typedef {AnimationTables & { THINKING_ALT: { cycleMs: number, dotStarts: readonly number[], dotDuration: number, mergeAt: number, absorbAt: number }, SPRINGS: { spin: [number, number], x: [number, number], y: [number, number], squash: [number, number], blink: [number, number], eyeScale: [number, number], front: [number, number], gazeX: [number, number], gazeY: [number, number], notify: [number, number], humDots: [number, number], visual: [number, number], visualMix: [number, number], shape: [number, number], formTurn: [number, number], spinTurn: [number, number] }, FACE_TUNE: { size: number, gap: number, height: number, eyeWidth: number, eyeHeight: number }, POSE: { turn: number, tilt: number, roll: number, scale: number }, POSE_HOME: { turn: number, tilt: number, roll: number }, WINK_STATES: ReadonlySet<string>, CAMERA_REGISTRY: IdRegistry, poseScale(name: string): number, shapeEyeScale(name: string): number }} RuntimeTables */
 /** @typedef {{ face: FaceMetrics, ring: GeometryPoint[], tilt: number, belt: number }} RuntimeShapeMetrics */
 /** @typedef {{ lerpPoly(from: GeometryPoint[], to: GeometryPoint[], amount: number): GeometryPoint[], lerpFace(from: FaceMetrics, to: FaceMetrics, amount: number): FaceMetrics, shapeMetrics(name: string): RuntimeShapeMetrics, lerpRing(from: GeometryPoint[], to: GeometryPoint[], amount: number): GeometryPoint[] }} RuntimeGeometry */
 /** @typedef {{ queueBlink(queue: Array<{ at: number, v: number }>, now: number): void, consumeBlink(queue: Array<{ at: number, v: number }>, now: number): number | null }} EyeController */
