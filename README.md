@@ -41,6 +41,18 @@ cargo run --release -- --show-action happy
 
 预览模式每轮播放指定预设 3 秒，暂停 1 秒后重新播放。预览模式不启动 IPC 服务，因此可以与正常运行的桌宠实例同时启动。
 
+### 渲染性能与视觉等价验证
+
+```bash
+# 在修改前记录基线, 修改后使用相同环境比较
+npm run renderer:bench -- --outputJson=/tmp/o-pet-before.json
+npm run renderer:bench -- --compare=/tmp/o-pet-before.json --outputJson=/tmp/o-pet-after.json
+```
+
+基准对空闲、睡眠、思考形变、书写和旋转彩带分别回放固定随机种子的 60 秒动画，按 60 Hz 推进。每个场景预热 3 次，测量 10 次。表格中的耗时包含初始化、回放和销毁，不包含视觉哈希计算。DOM 使用测试替身，因此结果只代表 Node.js 中的 JS 工作负载，不代表 WebView 的绘制耗时或整机功耗。比较时应使用相同 Node.js 版本，避免其他高负载任务，并重复测量。
+
+`renderer:test` 包含连续逐帧基线，覆盖全部动作的入场与退场，以及 60 Hz、120 Hz 和不规则帧间隔下的交互、形变和长时间空闲。测试同时检查帧模型和 SVG 输出。性能优化不应更新这些基线来消除差异。真实 WebView 的滤镜、抗锯齿、帧呈现和功耗仍需单独验证。
+
 ## 渲染器架构
 
 渲染器使用单向依赖和显式组合：

@@ -130,6 +130,7 @@ function create(dependencies) {
     ) {
       this.visible.clear();
       this._reduce = reduce;
+      if (current === null && previous === null) return;
       const radiusPx = catalog.radiusFor(current, previous, mix);
       for (const definition of catalog.ordered) {
         if (!definition.paint) continue;

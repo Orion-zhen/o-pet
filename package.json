@@ -4,6 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"renderer:test": "vitest --run tests/renderer",
+		"renderer:bench": "vitest bench --run tests/renderer",
 		"renderer:typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {

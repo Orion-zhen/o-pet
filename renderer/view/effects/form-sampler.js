@@ -6,6 +6,16 @@
  */
 function create(dependencies) {
   const definitions = Object.values(dependencies.definitions);
+  const restingSample = Object.freeze({
+    dotsAmount: 0,
+    dotPulse: Object.freeze({ lift: 0, pop: 1, tone: 1 }),
+    xPx: 0,
+    yPx: 0,
+    rollDeg: 0,
+    radiusScale: 19 / dependencies.data.Re,
+    opacityFade: 0,
+    radiusPx: 19,
+  });
   const scaleDefinitions = definitions
     .filter((definition) => definition.sampleScale !== undefined)
     .sort((left, right) => (left.scaleOrder ?? 0) - (right.scaleOrder ?? 0));
@@ -45,6 +55,7 @@ function create(dependencies) {
     mix,
     reduce,
   ) {
+    if (current === null && previous === null) return restingSample;
     let scale = 1;
     let dotsAmount = 0;
     /** @type {import("./contracts.js").DotPulse} */

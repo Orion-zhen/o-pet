@@ -534,12 +534,23 @@ function create(dependencies) {
     return path;
   }
 
+  // 身体轮廓来自不可变的形状数据或当帧插值. 只缓存最后一条输入轮廓,
+  // 不保留形状过渡期间生成的历史轮廓.
+  let deformationBasis = null;
   function deformRing(ring, center, deformation) {
-    return ring.map(([x, y]) => {
-      const dx = x - center;
-      const dy = y - center;
-      const radius = Math.hypot(dx, dy) || 1;
-      const angle = Math.atan2(dy, dx);
+    if (!deformationBasis || deformationBasis.ring !== ring || deformationBasis.center !== center) {
+      deformationBasis = {
+        ring,
+        center,
+        points: ring.map(([x, y]) => {
+          const dx = x - center;
+          const dy = y - center;
+          const radius = Math.hypot(dx, dy) || 1;
+          return { x, y, nx: dx / radius, ny: dy / radius, angle: Math.atan2(dy, dx) };
+        }),
+      };
+    }
+    return deformationBasis.points.map(({ x, y, nx, ny, angle }) => {
       let radial =
         deformation.waveAmount *
         2.6 *
@@ -554,7 +565,7 @@ function create(dependencies) {
         const amount = clamp(1 - distance / bump.width, 0, 1);
         radial += bump.amount * K2(amount);
       }
-      return [x + (dx / radius) * radial, y + (dy / radius) * radial];
+      return [x + nx * radial, y + ny * radial];
     });
   }
 

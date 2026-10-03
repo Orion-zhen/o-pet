@@ -78,6 +78,7 @@ function create(dependencies, options) {
       this.destroyed = false;
       this.random = opts.random;
       this.math = M;
+      this.projectFrame = FRAME.create();
       this.rand = this.math.rand;
       this.sign = this.math.sign;
       this.motionController = MOTION.create(this.math, T);
@@ -599,7 +600,7 @@ function create(dependencies, options) {
     _render(now) {
       const morphT = clamp(this.eyeMorph.x, 0, 1);
       this._applyViewportScale();
-      const frame = FRAME.create({
+      const frame = this.projectFrame({
         ...this.visual.snapshot(),
         now,
         badgeColor: this.badgeColor,

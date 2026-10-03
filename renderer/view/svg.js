@@ -21,6 +21,23 @@ function create(dependencies, options) {
   const { VIEW_HALF, VIEW_MID } = dependencies.tables;
   const { cameraZoomFor } = FX;
   const { lerpFace } = GEO;
+  /** @type {{ pose: import("../types.js").FrameModel["pose"], home: import("../types.js").FrameModel["poseHome"], rotation: import("../types.js").Matrix3 } | null} */
+  let poseRotation = null;
+
+  /** @param {Readonly<import("../types.js").FrameModel>} frame */
+  function rotationFor(frame) {
+    if (
+      !poseRotation ||
+      poseRotation.pose !== frame.pose || poseRotation.home !== frame.poseHome
+    ) {
+      poseRotation = {
+        pose: frame.pose,
+        home: frame.poseHome,
+        rotation: relRot(frame.pose, frame.poseHome),
+      };
+    }
+    return poseRotation.rotation;
+  }
 
   /** @param {string} name */
   const shapeFor = (name) => {
@@ -266,7 +283,7 @@ function create(dependencies, options) {
 
     const morphT = clamp(frame.eyeMorph.x, 0, 1);
     const polys = frame.eyePolys;
-    const cr = relRot(frame.pose, frame.poseHome);
+    const cr = rotationFor(frame);
     const overlayLive =
       yl > 0.001 ||
       Math.abs(frame.formTurn.t - frame.formTurn.x) > 0.01;

@@ -49,6 +49,8 @@ interface VisualCharacter {
 	setPreset(preset: unknown, options?: { resetEyes?: boolean }): void;
 	setReduceMotion(value: boolean): void;
 	setShape(shape: string): void;
+	setGazeTarget(point: { x: number; y: number } | null): void;
+	setPointerPosition(point: { x: number; y: number } | null): void;
 	winkOnce(eye?: number): void;
 	spinOnce(turns?: number, direction?: number): void;
 	hopOnce(): void;
