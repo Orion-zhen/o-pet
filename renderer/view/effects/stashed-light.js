@@ -1,5 +1,6 @@
 // @ts-check
 /* 空闲时发现并藏起光点的装饰特效。 */
+import { setAttribute } from "../dom.js";
 
 /** @param {{ math: import("../../types.js").MathPort }} dependencies */
 function create(dependencies) {
@@ -17,7 +18,7 @@ function create(dependencies) {
 
     const absorption = clamp((elapsed - 1650) / 420, 0, 1);
     const dotVisible = elapsed < 2070;
-    dot.style.display = dotVisible ? "" : "none";
+    layer.setVisible(dot, dotVisible);
     if (dotVisible) {
       const approach = frame.reduce
         ? 0
@@ -39,10 +40,10 @@ function create(dependencies) {
         approach * approach * endY;
       const appear = clamp(elapsed / 260, 0, 1);
       const hover = frame.reduce ? 0 : Math.sin(elapsed * 0.009) * 2.5;
-      dot.setAttribute("cx", x.toFixed(1));
-      dot.setAttribute("cy", (y + hover).toFixed(1));
-      dot.setAttribute("r", (7.5 * amount * (1 - absorption)).toFixed(2));
-      dot.setAttribute(
+      setAttribute(dot, "cx", x.toFixed(1));
+      setAttribute(dot, "cy", (y + hover).toFixed(1));
+      setAttribute(dot, "r", (7.5 * amount * (1 - absorption)).toFixed(2));
+      setAttribute(dot,
         "opacity",
         (amount * appear * (1 - absorption)).toFixed(3),
       );
@@ -50,16 +51,16 @@ function create(dependencies) {
 
     const pulse = clamp((elapsed - 1880) / 820, 0, 1);
     const pulseVisible = pulse > 0 && pulse < 1;
-    ring.style.display = pulseVisible ? "" : "none";
+    layer.setVisible(ring, pulseVisible);
     if (pulseVisible) {
       const eased = frame.reduce ? 0.5 : K2(pulse);
       ring.removeAttribute("stroke-dasharray");
       ring.removeAttribute("transform");
-      ring.setAttribute("cx", `${frame.radius}`);
-      ring.setAttribute("cy", `${frame.radius}`);
-      ring.setAttribute("r", (76 + 33 * eased).toFixed(1));
-      ring.setAttribute("stroke-width", (3.2 * (1 - pulse)).toFixed(2));
-      ring.setAttribute(
+      setAttribute(ring, "cx", `${frame.radius}`);
+      setAttribute(ring, "cy", `${frame.radius}`);
+      setAttribute(ring, "r", (76 + 33 * eased).toFixed(1));
+      setAttribute(ring, "stroke-width", (3.2 * (1 - pulse)).toFixed(2));
+      setAttribute(ring,
         "opacity",
         (amount * (1 - pulse) * 0.72).toFixed(3),
       );

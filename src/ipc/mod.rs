@@ -1,5 +1,7 @@
 mod endpoint;
 mod protocol;
+#[cfg(unix)]
+mod readiness;
 
 use std::{
     io,
@@ -20,7 +22,10 @@ use interprocess::local_socket::{
 #[cfg(unix)]
 use interprocess::local_socket::traits::Stream as _;
 #[cfg(unix)]
-use std::fs;
+use std::{
+    fs,
+    os::{fd::AsFd, unix::net::UnixStream},
+};
 
 use crate::coordinator::{AnimationUpdate, Coordinator};
 use protocol::{ClientMessage, LineDecoder, parse_message};
@@ -29,14 +34,14 @@ pub use endpoint::resolve_endpoint;
 pub use protocol::MAX_LINE_BYTES;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
-#[cfg(unix)]
-const READ_TIMEOUT: Duration = Duration::from_millis(50);
 
 type AnimationSink = Arc<dyn Fn(AnimationUpdate) + Send + Sync>;
 
 pub struct Server {
     shutdown: Arc<AtomicBool>,
     accept_thread: Option<JoinHandle<()>>,
+    #[cfg(unix)]
+    cancel_writer: Option<UnixStream>,
 }
 
 impl Server {
@@ -50,12 +55,24 @@ impl Server {
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = Arc::clone(&shutdown);
         let sink: AnimationSink = Arc::new(sink);
+        #[cfg(unix)]
+        let (cancel_writer, cancel_reader) = UnixStream::pair()?;
         let accept_thread = thread::Builder::new()
             .name("o-pet-ipc-listener".into())
-            .spawn(move || accept_connections(listener, thread_shutdown, sink))?;
+            .spawn(move || {
+                accept_connections(
+                    listener,
+                    thread_shutdown,
+                    sink,
+                    #[cfg(unix)]
+                    Arc::new(cancel_reader),
+                )
+            })?;
         Ok(Self {
             shutdown,
             accept_thread: Some(accept_thread),
+            #[cfg(unix)]
+            cancel_writer: Some(cancel_writer),
         })
     }
 
@@ -65,6 +82,8 @@ impl Server {
 
     fn stop(&mut self) {
         self.shutdown.store(true, Ordering::Release);
+        #[cfg(unix)]
+        drop(self.cancel_writer.take());
         if let Some(thread) = self.accept_thread.take() {
             let _ = thread.join();
         }
@@ -163,12 +182,25 @@ fn accept_connections(
     listener: interprocess::local_socket::Listener,
     shutdown: Arc<AtomicBool>,
     sink: AnimationSink,
+    #[cfg(unix)] cancellation: Arc<UnixStream>,
 ) {
     let coordinator = Arc::new(Mutex::new(Coordinator::default()));
     let mut readers: Vec<JoinHandle<()>> = Vec::new();
     let mut next_connection_id = 1_u64;
 
     while !shutdown.load(Ordering::Acquire) {
+        #[cfg(unix)]
+        {
+            let interprocess::local_socket::Listener::UdSocket(socket) = &listener;
+            match readiness::wait_for_input(socket.as_fd(), &cancellation) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    eprintln!("o-pet 等待 IPC 连接失败: {error}");
+                    break;
+                }
+            }
+        }
         match listener.accept() {
             Ok(stream) => {
                 let connection_id = next_connection_id;
@@ -180,6 +212,8 @@ fn accept_connections(
                 let reader_shutdown = Arc::clone(&shutdown);
                 let reader_coordinator = Arc::clone(&coordinator);
                 let reader_sink = Arc::clone(&sink);
+                #[cfg(unix)]
+                let reader_cancellation = Arc::clone(&cancellation);
                 readers.push(thread::spawn(move || {
                     read_connection(
                         stream,
@@ -187,10 +221,13 @@ fn accept_connections(
                         reader_shutdown,
                         reader_coordinator,
                         reader_sink,
+                        #[cfg(unix)]
+                        reader_cancellation,
                     );
                 }));
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                #[cfg(windows)]
                 thread::sleep(POLL_INTERVAL);
             }
             Err(error) => {
@@ -224,10 +261,13 @@ fn read_connection(
     shutdown: Arc<AtomicBool>,
     coordinator: Arc<Mutex<Coordinator>>,
     sink: AnimationSink,
+    #[cfg(unix)] cancellation: Arc<UnixStream>,
 ) {
+    // macOS 接受的连接可能继承监听 socket 的非阻塞状态.
+    // 显式使用非阻塞读取和可取消的就绪等待, 不依赖读取超时来避免忙循环.
     #[cfg(unix)]
-    if let Err(error) = stream.set_recv_timeout(Some(READ_TIMEOUT)) {
-        eprintln!("o-pet 设置 IPC 读取超时失败: {error}");
+    if let Err(error) = stream.set_nonblocking(true) {
+        eprintln!("o-pet 设置 IPC 非阻塞读取失败: {error}");
         disconnect(connection_id, &coordinator, &sink);
         return;
     }
@@ -236,6 +276,18 @@ fn read_connection(
     let mut decoder = LineDecoder::default();
     let mut buffer = [0_u8; 8192];
     'connection: while !shutdown.load(Ordering::Acquire) {
+        #[cfg(unix)]
+        {
+            let Stream::UdSocket(socket) = &stream;
+            match readiness::wait_for_input(socket.as_fd(), &cancellation) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    eprintln!("o-pet 等待 IPC 数据失败: {error}");
+                    break;
+                }
+            }
+        }
         #[cfg(windows)]
         match windows_stream_has_input(&stream) {
             Ok(true) => {}
@@ -276,7 +328,7 @@ fn read_connection(
             Err(error)
                 if matches!(
                     error.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
                 ) => {}
             Err(_) => break,
         }

@@ -154,6 +154,86 @@ fn protects_socket_and_reclaims_only_a_confirmed_stale_socket() {
     server.shutdown();
 }
 
+#[test]
+fn shutdown_wakes_an_idle_listener_and_releases_the_endpoint() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let endpoint = test_endpoint(&directory);
+    let (server, _activities) = start_server(&endpoint);
+    shutdown_with_deadline(server);
+    assert!(!endpoint.exists());
+}
+
+#[test]
+fn shutdown_wakes_all_readers_even_with_silent_or_partial_messages() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let endpoint = test_endpoint(&directory);
+    let (server, activities) = start_server(&endpoint);
+    let mut clients = Vec::new();
+    for (tool, activity) in [
+        ("read", Activity::Searching),
+        ("write", Activity::Coding),
+        ("bash", Activity::Terminal),
+    ] {
+        let mut client = connect(&endpoint);
+        send(
+            &mut client,
+            format!(
+                "{{\"type\":\"hello\",\"clientId\":\"{tool}\",\"sessionId\":\"s\"}}\n\
+                 {{\"type\":\"event\",\"event\":{{\"type\":\"tool_started\",\"toolCallId\":\"{tool}\",\"toolName\":\"{tool}\"}}}}\n"
+            )
+            .as_bytes(),
+        );
+        assert_eq!(receive(&activities), AnimationUpdate::steady(activity));
+        send(&mut client, b"{\"type\":");
+        clients.push(client);
+    }
+    clients.push(connect(&endpoint));
+
+    shutdown_with_deadline(server);
+    assert!(!endpoint.exists());
+    drop(clients);
+}
+
+#[test]
+fn dropping_a_server_also_wakes_readers() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let endpoint = test_endpoint(&directory);
+    let (server, activities) = start_server(&endpoint);
+    let mut client = connect(&endpoint);
+    send(
+        &mut client,
+        b"{\"type\":\"hello\",\"clientId\":\"one\",\"sessionId\":\"s\"}\n\
+          {\"type\":\"event\",\"event\":{\"type\":\"thinking_started\"}}\n",
+    );
+    assert_eq!(
+        receive(&activities),
+        AnimationUpdate::steady(Activity::Thinking)
+    );
+    let (sender, receiver) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        drop(server);
+        sender.send(()).expect("shutdown observer");
+    });
+    receiver
+        .recv_timeout(WAIT)
+        .expect("drop must not wait for client input");
+    thread.join().expect("server drop");
+    assert!(!endpoint.exists());
+    drop(client);
+}
+
+fn shutdown_with_deadline(server: Server) {
+    let (sender, receiver) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        server.shutdown();
+        sender.send(()).expect("shutdown observer");
+    });
+    receiver
+        .recv_timeout(WAIT)
+        .expect("shutdown must not wait for client input");
+    thread.join().expect("server shutdown");
+}
+
 fn test_endpoint(directory: &tempfile::TempDir) -> PathBuf {
     #[cfg(unix)]
     {

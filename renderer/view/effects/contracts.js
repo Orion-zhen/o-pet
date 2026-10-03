@@ -19,6 +19,7 @@
  * @property {string} pencilPath
  * @property {string} bangPath
  * @property {() => void} ensureThoughtDots
+ * @property {(node: SVGElement, visible: boolean) => void} setVisible
  */
 
 /** @typedef {{ amount: number, direction: number, now: number, stateAt: number, radius: number, radiusPx: number, reduce: boolean }} EffectPaintFrame */

@@ -1,5 +1,6 @@
 // @ts-check
 /* 审批警示符号。 */
+import { setAttribute, setStyle } from "../dom.js";
 
 /** @param {{ math: import("../../types.js").MathPort }} dependencies */
 function create(dependencies) {
@@ -12,14 +13,14 @@ function create(dependencies) {
     const enter = Rc(clamp(frame.amount * 1.1, 0, 1));
     const decay = Math.exp(-((elapsed % 2.2) * 5.5));
     const shake = Math.sin(elapsed * 42) * 2.2 * decay;
-    glyph.style.display = "";
-    glyph.setAttribute("d", layer.bangPath);
-    glyph.style.fill = "var(--fg)";
-    glyph.setAttribute(
+    layer.setVisible(glyph, true);
+    setAttribute(glyph, "d", layer.bangPath);
+    setStyle(glyph, "fill", "var(--fg)");
+    setAttribute(glyph,
       "transform",
       `translate(0 ${(-26 - (1 - enter) * 70).toFixed(1)}) rotate(${shake.toFixed(2)} ${frame.radius} ${(frame.radius - 74).toFixed(1)}) translate(${frame.radius} ${frame.radius}) scale(${clamp(frame.amount * 1.2, 0, 1).toFixed(3)}) translate(${-frame.radius} ${-frame.radius})`,
     );
-    glyph.setAttribute(
+    setAttribute(glyph,
       "opacity",
       clamp(frame.amount * 1.5 - 0.2, 0, 1).toFixed(3),
     );

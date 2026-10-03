@@ -1,5 +1,6 @@
 // @ts-check
 /* 口述波形特效。 */
+import { setAttribute } from "../dom.js";
 
 /** @param {{ math: import("../../types.js").MathPort }} dependencies */
 function create(dependencies) {
@@ -26,7 +27,7 @@ function create(dependencies) {
         1,
       );
       if (delayed <= 0.004) {
-        node.style.display = "none";
+        layer.setVisible(node, false);
         continue;
       }
       const enter = y1e(delayed);
@@ -36,20 +37,20 @@ function create(dependencies) {
       const radius =
         (7 + 9 * clamp(amplitude, 0.08, 1)) * Rc(delayed);
       const lift = 6 * clamp(amplitude, 0, 1) * delayed;
-      node.style.display = "";
+      layer.setVisible(node, true);
       if (index < 2) {
         const scale = (radius / frame.radius) * 1.02;
-        node.setAttribute("d", layer.circlePath);
-        node.setAttribute(
+        setAttribute(node, "d", layer.circlePath);
+        setAttribute(node,
           "transform",
           `translate(${(frame.radius + slot * gap * enter).toFixed(1)} ${(frame.radius - lift).toFixed(1)}) scale(${scale.toFixed(4)}) translate(${-frame.radius} ${-frame.radius})`,
         );
-        node.setAttribute("opacity", delayed.toFixed(3));
+        setAttribute(node, "opacity", delayed.toFixed(3));
       } else {
-        node.setAttribute("cx", (frame.radius + slot * gap * enter).toFixed(1));
-        node.setAttribute("cy", (frame.radius - lift).toFixed(1));
-        node.setAttribute("r", radius.toFixed(2));
-        node.setAttribute("opacity", delayed.toFixed(3));
+        setAttribute(node, "cx", (frame.radius + slot * gap * enter).toFixed(1));
+        setAttribute(node, "cy", (frame.radius - lift).toFixed(1));
+        setAttribute(node, "r", radius.toFixed(2));
+        setAttribute(node, "opacity", delayed.toFixed(3));
       }
     }
   }

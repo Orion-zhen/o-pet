@@ -1,4 +1,5 @@
 /* 眼睛渲染和眨眼队列。眼形、视线和脸部动态由独立控制器提供。 */
+import { setAttribute, setStyle } from "./dom.js";
 function create(dependencies, random) {
   const { clamp, Dke } = dependencies.math;
   const { centroid, polyPath, spanAt, spanPoly } = dependencies.geometry;
@@ -116,7 +117,7 @@ function create(dependencies, random) {
     for (let i = 0; i < 2; i++) {
       const poly = polys[i];
       const [Gn, Ti] = cents[i];
-      eyeEls[i].setAttribute("d", polyPath(poly));
+      setAttribute(eyeEls[i], "d", polyPath(poly));
       const eyeLid = opt.eyeLids?.[i] ?? 1;
       const lid = winkLid(blinkX * eyeLid, now, winkAt, winkEye, i);
       const Ea = Gn + (i === 0 ? sX : 0);
@@ -236,7 +237,7 @@ function create(dependencies, random) {
 
       const Vee = clamp(_c * Hee * pulse, 0.02, 2.4);
       const _2 = clamp(vre * lid * u1 * pulse, 0.02, 2.4);
-      eyeEls[i].style.display = bre && formAmount < 0.5 ? "" : "none";
+      setStyle(eyeEls[i], "display", bre && formAmount < 0.5 ? "" : "none");
       const useTurnOr3d = surfaceTurn != null || use3d;
       const Ume = G9e * _2 + 2;
       const vl = clamp(
@@ -283,12 +284,12 @@ function create(dependencies, random) {
           blM = Ree * FrM,
           IoM = Fee * IaM,
           uoM = zee * IaM;
-        eyeEls[i].setAttribute(
+        setAttribute(eyeEls[i],
           "transform",
           `translate(${dd.toFixed(2)} ${Yj.toFixed(2)}) matrix(${liM.toFixed(4)} ${blM.toFixed(4)} ${IoM.toFixed(4)} ${uoM.toFixed(4)} 0 0) translate(${(-Gn).toFixed(2)} ${(-Ti).toFixed(2)})`,
         );
       } else {
-        eyeEls[i].setAttribute(
+        setAttribute(eyeEls[i],
           "transform",
           `translate(${dd.toFixed(2)} ${Yj.toFixed(2)}) scale(${Vee.toFixed(4)} ${_2.toFixed(4)}) translate(${(-Gn).toFixed(2)} ${(-Ti).toFixed(2)})`,
         );
@@ -296,13 +297,13 @@ function create(dependencies, random) {
     }
 
     const amt = clamp(notifyX, 0, 1.4);
-    if (amt <= 0.01) badgeEl.style.display = "none";
+    if (amt <= 0.01) setStyle(badgeEl, "display", "none");
     else {
-      badgeEl.style.display = "";
-      badgeEl.style.fill = badgeColor;
-      badgeEl.setAttribute("cx", Yl[0].toFixed(1));
-      badgeEl.setAttribute("cy", Yl[1].toFixed(1));
-      badgeEl.setAttribute("r", (20 * amt).toFixed(2));
+      setStyle(badgeEl, "display", "");
+      setStyle(badgeEl, "fill", badgeColor);
+      setAttribute(badgeEl, "cx", Yl[0].toFixed(1));
+      setAttribute(badgeEl, "cy", Yl[1].toFixed(1));
+      setAttribute(badgeEl, "r", (20 * amt).toFixed(2));
     }
   }
 

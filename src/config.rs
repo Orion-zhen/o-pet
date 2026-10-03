@@ -112,7 +112,7 @@ impl RawConfig {
 
 fn parse_color(field: &str, value: &str) -> io::Result<String> {
     parse(value)
-        .map(|color| color.to_css_hex())
+        .map(|color| color.to_css_hex().to_string())
         .map_err(|error| invalid_value(format!("{field} 不是有效的 CSS 颜色: {error}")))
 }
 
@@ -175,6 +175,32 @@ mod tests {
                 "eye_color": "#000080",
             })
         );
+    }
+
+    #[test]
+    fn preserves_hex_output_and_alpha_for_body_and_eye_colors() {
+        for (input, expected) in [
+            ("#AbC", "#aabbcc"),
+            ("#AbC8", "#aabbcc88"),
+            ("rgba(255, 0, 0, 0.5)", "#ff000080"),
+            ("transparent", "#00000000"),
+        ] {
+            let directory = tempfile::tempdir().expect("temporary directory");
+            let path = directory.path().join("config.toml");
+            std::fs::write(
+                &path,
+                format!("body_color = {input:?}\neye_color = {input:?}\n"),
+            )
+            .expect("write color config");
+
+            let config = Config::load_from(&path).expect("load color config");
+            assert_eq!(config.renderer.eye_color, expected, "{input}");
+            assert_eq!(
+                serde_json::to_value(&config.renderer.body_color).expect("serialize body paint"),
+                serde_json::json!({ "kind": "solid", "color": expected }),
+                "{input}",
+            );
+        }
     }
 
     #[test]

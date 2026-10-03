@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import geometryData from "../../renderer/view/geometry-data.js";
 import { ClockStub, DocumentStub, MotionQueryStub, SvgElementStub } from "./browser-stubs.js";
@@ -68,6 +68,63 @@ function visibleBodyColoredCircles(root: SvgElementStub): SvgElementStub[] {
 }
 
 describe("渲染器视觉运行时", () => {
+	it.each(["idle", "sleeping", "thinking", "writing", "humming"])(
+		"%s 保持逐帧动画但不重复提交未变化的 SVG 属性",
+		(state) => {
+			const harness = createVisualHarness();
+			harness.character.setShape("pebble");
+			harness.character.setPreset(harness.presets.fromState(state));
+			for (let frame = 1; frame <= 120; frame++) harness.frame(frame * 1000 / 60);
+			let writes = 0;
+			let redundant = 0;
+			const original = SvgElementStub.prototype.setAttribute;
+			const spy = vi.spyOn(SvgElementStub.prototype, "setAttribute").mockImplementation(
+				function (this: SvgElementStub, name: string, value: string): void {
+					writes += 1;
+					if (this.getAttribute(name) === value) redundant += 1;
+					original.call(this, name, value);
+				},
+			);
+			try {
+				for (let frame = 121; frame <= 720; frame++) harness.frame(frame * 1000 / 60);
+				expect(writes).toBeGreaterThan(0);
+				expect(redundant).toBe(0);
+				expect(harness.latestFrame().now).toBe(12_000);
+				expect(harness.pendingFrames()).toBe(1);
+			} finally {
+				spy.mockRestore();
+				harness.character.destroy();
+			}
+		},
+	);
+
+	it("持续可见的装饰不会每帧先隐藏再显示，退出场景后才隐藏", () => {
+		const harness = createVisualHarness();
+		harness.character.playPreset(harness.presets.scenes.deepThinking);
+		for (let time = 16; time <= 1504; time += 16) harness.frame(time);
+		const dots = visibleBodyColoredDots(harness.svg);
+		expect(dots).toHaveLength(2);
+		let displayWrites = 0;
+		for (const dot of dots) {
+			let display = dot.style.display;
+			Object.defineProperty(dot.style, "display", {
+				enumerable: true,
+				get: () => display,
+				set(value: string) {
+					display = value;
+					displayWrites += 1;
+				},
+			});
+		}
+		for (let time = 1520; time <= 1904; time += 16) harness.frame(time);
+		expect(displayWrites).toBe(0);
+		harness.character.setPreset(harness.presets.scenes.idle);
+		for (let time = 1920; time <= 4000; time += 16) harness.frame(time);
+		expect(dots.every((dot) => dot.style.display === "none")).toBe(true);
+		expect(displayWrites).toBe(dots.length);
+		harness.character.destroy();
+	});
+
 	it("用 SVG 绘制线性渐变并保留代表色", () => {
 		const harness = createVisualHarness();
 		harness.character.setInk({

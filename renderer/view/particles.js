@@ -1,4 +1,5 @@
 /* 粒子和彩带控制器。只管理粒子生命周期，不计算身体或装饰图形。 */
+import { setAttribute } from "./dom.js";
 const NS = "http://www.w3.org/2000/svg";
 const Re0 = 114.2705;
 const STAR_COLOR = "#f4c34e";
@@ -26,7 +27,7 @@ function createParticles(options) {
   const randomRange = options.rand;
   const make = (tag, attrs) => {
     const node = doc.createElementNS(NS, tag);
-    if (attrs) for (const key in attrs) node.setAttribute(key, attrs[key]);
+    if (attrs) for (const key in attrs) setAttribute(node, key, attrs[key]);
     return node;
   };
   let reduce = options.reduceMotion === true;
@@ -308,7 +309,7 @@ function createParticles(options) {
           }
           back.appendChild(Te);
           j.gradEl = Te;
-          de.setAttribute("fill", `url(#${Te.id})`);
+          setAttribute(de, "fill", `url(#${Te.id})`);
           back.appendChild(de);
           j.trailEl = de;
           const Ce = make("path", {
@@ -341,28 +342,28 @@ function createParticles(options) {
         if (Ae.length >= 2) {
           const { front: de, back: Te } = ribbon(Ae, Ne);
           const Je = X.toFixed(3);
-          j.trailEl.setAttribute("d", Te);
-          j.trailEl.setAttribute("opacity", Je);
-          j.trailFrontEl.setAttribute("d", de);
-          j.trailFrontEl.setAttribute("opacity", Je);
+          setAttribute(j.trailEl, "d", Te);
+          setAttribute(j.trailEl, "opacity", Je);
+          setAttribute(j.trailFrontEl, "d", de);
+          setAttribute(j.trailFrontEl, "opacity", Je);
           const qe = j.hue + j.hueVel * j.life;
           for (let we = 0; we < j.stops.length; we++) {
             const Pe = we / (j.stops.length - 1),
               je = qe + Pe * j.hueSpan;
-            j.stops[we].setAttribute(
+            setAttribute(j.stops[we],
               "stop-color",
               `hsl(${(((je % 360) + 360) % 360).toFixed(0)} 56% ${(56 + 11 * Pe).toFixed(0)}%)`,
             );
           }
           const Ce = Ae[0],
             Ie = Ae[Ae.length - 1];
-          j.gradEl.setAttribute("x1", Ce.x.toFixed(1));
-          j.gradEl.setAttribute("y1", Ce.y.toFixed(1));
-          j.gradEl.setAttribute("x2", Ie.x.toFixed(1));
-          j.gradEl.setAttribute("y2", Ie.y.toFixed(1));
+          setAttribute(j.gradEl, "x1", Ce.x.toFixed(1));
+          setAttribute(j.gradEl, "y1", Ce.y.toFixed(1));
+          setAttribute(j.gradEl, "x2", Ie.x.toFixed(1));
+          setAttribute(j.gradEl, "y2", Ie.y.toFixed(1));
         } else {
-          j.trailEl.setAttribute("opacity", "0");
-          j.trailFrontEl.setAttribute("opacity", "0");
+          setAttribute(j.trailEl, "opacity", "0");
+          setAttribute(j.trailFrontEl, "opacity", "0");
         }
         keep.push(j);
         continue;
@@ -377,33 +378,33 @@ function createParticles(options) {
       const ae = Math.max(j.r * (1 - le * 0.4), 0.5);
       if (!j.el) {
         const ce = make(j.star ? "path" : j.round ? "circle" : "rect");
-        if (j.star) ce.setAttribute("d", STAR);
-        ce.setAttribute("fill", j.color);
+        if (j.star) setAttribute(ce, "d", STAR);
+        setAttribute(ce, "fill", j.color);
         back.appendChild(ce);
         j.el = ce;
       }
-      j.el.setAttribute("opacity", Q.toFixed(3));
+      setAttribute(j.el, "opacity", Q.toFixed(3));
       if (j.star) {
         j.rot += j.vr * dt;
-        j.el.setAttribute(
+        setAttribute(j.el,
           "transform",
           `translate(${j.x.toFixed(1)} ${j.y.toFixed(1)}) rotate(${j.rot.toFixed(1)}) scale(${ae.toFixed(2)})`,
         );
       } else if (j.round) {
-        j.el.setAttribute("cx", j.x.toFixed(1));
-        j.el.setAttribute("cy", j.y.toFixed(1));
-        j.el.setAttribute("r", ae.toFixed(2));
+        setAttribute(j.el, "cx", j.x.toFixed(1));
+        setAttribute(j.el, "cy", j.y.toFixed(1));
+        setAttribute(j.el, "r", ae.toFixed(2));
       } else {
         const ce = Math.hypot(j.vx, j.vy);
         const xe = Math.max(ae * 2, Math.min(ce * 0.05, 30)),
           Se = ae * 1.5;
         const fe = (Math.atan2(j.vy, j.vx) * 180) / Math.PI;
-        j.el.setAttribute("width", xe.toFixed(1));
-        j.el.setAttribute("height", Se.toFixed(1));
-        j.el.setAttribute("rx", (Se / 2).toFixed(2));
-        j.el.setAttribute("x", (j.x - xe / 2).toFixed(1));
-        j.el.setAttribute("y", (j.y - Se / 2).toFixed(1));
-        j.el.setAttribute(
+        setAttribute(j.el, "width", xe.toFixed(1));
+        setAttribute(j.el, "height", Se.toFixed(1));
+        setAttribute(j.el, "rx", (Se / 2).toFixed(2));
+        setAttribute(j.el, "x", (j.x - xe / 2).toFixed(1));
+        setAttribute(j.el, "y", (j.y - Se / 2).toFixed(1));
+        setAttribute(j.el,
           "transform",
           `rotate(${fe.toFixed(1)} ${j.x.toFixed(1)} ${j.y.toFixed(1)})`,
         );

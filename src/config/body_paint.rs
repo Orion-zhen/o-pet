@@ -59,7 +59,7 @@ pub(crate) fn parse_body_paint(value: &str, blur: Option<u8>) -> Result<BodyPain
     }
 
     parse_color(value).map(|color| BodyPaint::Solid {
-        color: color.to_css_hex(),
+        color: color.to_css_hex().to_string(),
     })
 }
 
@@ -70,7 +70,9 @@ fn parse_linear(inner: &str) -> Result<BodyPaint, String> {
     }
     let (angle, interpolation) = parse_linear_header(parts[0])?;
     let colors = parse_colors(&parts[1..])?;
-    let accent = accent_color(&colors, interpolation).to_css_hex();
+    let accent = accent_color(&colors, interpolation)
+        .to_css_hex()
+        .to_string();
     Ok(BodyPaint::Linear {
         angle,
         stops: gradient_stops(&colors, interpolation),
@@ -92,7 +94,9 @@ fn parse_radial(inner: &str, blur: f32) -> Result<BodyPaint, String> {
         (center, interpolation, &parts[1..])
     };
     let colors = parse_colors(color_parts)?;
-    let accent = accent_color(&colors, interpolation).to_css_hex();
+    let accent = accent_color(&colors, interpolation)
+        .to_css_hex()
+        .to_string();
     Ok(BodyPaint::Radial {
         center,
         stops: gradient_stops(&colors, interpolation),
@@ -227,7 +231,7 @@ fn parse_color(value: &str) -> Result<Color, String> {
 
 fn accent_color(colors: &[Color], interpolation: Interpolation) -> Color {
     if colors.len() == 3 {
-        return colors[1].clone();
+        return colors[1];
     }
     interpolate(&colors[0], &colors[1], 0.5, interpolation)
 }
@@ -343,6 +347,26 @@ mod tests {
         assert_eq!(value["center"], serde_json::json!([0.35, 0.3]));
         assert_eq!(value["blur"], 10.0);
         assert_eq!(value["stops"].as_array().expect("stops").len(), 17);
+    }
+
+    #[test]
+    fn preserves_translucent_gradient_stops_and_accent() {
+        for input in [
+            "linear-gradient(90deg, rgba(255, 0, 0, 0.5), rgba(0, 0, 255, 0.25))",
+            "radial-gradient(rgba(255, 0, 0, 0.5), rgba(0, 0, 255, 0.25))",
+        ] {
+            let paint = parse_body_paint(input, None).expect("translucent gradient");
+            let value = serde_json::to_value(paint).expect("serialize gradient");
+            assert_eq!(value["accent"], "#80008060", "{input}");
+            assert_eq!(
+                value["stops"],
+                serde_json::json!([
+                    { "offset": 0.0, "color": "#ff0000", "opacity": 0.5 },
+                    { "offset": 1.0, "color": "#0000ff", "opacity": 0.25 },
+                ]),
+                "{input}",
+            );
+        }
     }
 
     #[test]

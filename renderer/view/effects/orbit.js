@@ -1,5 +1,6 @@
 // @ts-check
 /* 环绕粒子特效。 */
+import { setAttribute } from "../dom.js";
 
 /** @param {{ math: import("../../types.js").MathPort }} dependencies */
 function create(dependencies) {
@@ -16,20 +17,20 @@ function create(dependencies) {
       const angle = phase + (index * Math.PI * 2) / 5;
       const depth = Math.cos(angle);
       const scale = 0.5 + 0.5 * clamp(depth, 0, 1);
-      node.style.display = "";
-      node.setAttribute(
+      layer.setVisible(node, true);
+      setAttribute(node,
         "cx",
         (frame.radius + orbitRadius * Math.sin(angle)).toFixed(1),
       );
-      node.setAttribute(
+      setAttribute(node,
         "cy",
         (frame.radius - orbitRadius * 0.42 * Math.cos(angle)).toFixed(1),
       );
-      node.setAttribute(
+      setAttribute(node,
         "r",
         Math.max(particleRadius * scale * opacity, 0.3).toFixed(2),
       );
-      node.setAttribute(
+      setAttribute(node,
         "opacity",
         (clamp((depth + 0.4) / 0.6, 0.18, 1) * opacity).toFixed(3),
       );

@@ -1,5 +1,6 @@
 // @ts-check
 /* SVG 帧渲染器。把已混合的控制器状态投影为身体、眼睛、装饰和相机。 */
+import { setAttribute, setStyle } from "./dom.js";
 /**
  * @typedef {ReturnType<typeof import("./effects.js").create>} EffectsRuntime
  * @typedef {InstanceType<EffectsRuntime["OverlayLayer"]>} OverlayLayer
@@ -32,18 +33,18 @@ function create(dependencies, options) {
   function build(character, doc, random, rand) {
     const geo = DATA;
     const vb = geo.viewBox;
-    character.svg.setAttribute(
+    setAttribute(character.svg,
       "viewBox",
       `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`,
     );
-    character.svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    setAttribute(character.svg, "xmlns", "http://www.w3.org/2000/svg");
     character.svg.style.overflow = "visible";
     character.svg.innerHTML = "";
     const ns = "http://www.w3.org/2000/svg";
     const defs = doc.createElementNS(ns, "defs");
     const clip = doc.createElementNS(ns, "clipPath");
     const clipId = `grok-clip-${random().toString(36).slice(2, 8)}`;
-    clip.setAttribute("id", clipId);
+    setAttribute(clip, "id", clipId);
     character.clipPath = doc.createElementNS(ns, "path");
     clip.appendChild(character.clipPath);
     defs.appendChild(clip);
@@ -58,18 +59,18 @@ function create(dependencies, options) {
 
     character.group = doc.createElementNS(ns, "g");
     character.body = doc.createElementNS(ns, "path");
-    character.body.setAttribute("fill", "var(--fg, #000)");
+    setAttribute(character.body, "fill", "var(--fg, #000)");
     const eyesG = doc.createElementNS(ns, "g");
-    eyesG.setAttribute("clip-path", `url(#${clipId})`);
+    setAttribute(eyesG, "clip-path", `url(#${clipId})`);
     character.eyesG = eyesG;
     character.eyeEls = [0, 1].map(() => {
       const p = doc.createElementNS(ns, "path");
-      p.setAttribute("fill", "var(--bg, #f3efe6)");
+      setAttribute(p, "fill", "var(--bg, #f3efe6)");
       eyesG.appendChild(p);
       return p;
     });
     character.badge = doc.createElementNS(ns, "circle");
-    character.badge.setAttribute("style", "display:none");
+    setAttribute(character.badge, "style", "display:none");
     character.group.appendChild(character.body);
     character.group.appendChild(eyesG);
     character.group.appendChild(character.badge);
@@ -105,8 +106,8 @@ function create(dependencies, options) {
       },
     });
     const initialPath = shapeFor(character.initialShape).path;
-    character.body.setAttribute("d", initialPath);
-    character.clipPath.setAttribute("d", initialPath);
+    setAttribute(character.body, "d", initialPath);
+    setAttribute(character.clipPath, "d", initialPath);
   }
 
   /** @param {SvgView} character @param {Readonly<import("../types.js").FrameModel>} frame */
@@ -154,14 +155,15 @@ function create(dependencies, options) {
       ov.rollDeg * yl;
     const sx = frame.squashX.x * bodyW + ov.radiusScale * yl;
     const sy = frame.squash.x * bodyW + ov.radiusScale * yl;
-    character.group.setAttribute(
+    setAttribute(character.group,
       "transform",
       `translate(${(R + tx).toFixed(2)} ${(R + ty).toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-R} ${-R})`,
     );
-    character.group.style.opacity = (
-      (1 - (1 - ov.dotPulse.tone) * ov.dotsAmount) *
-      (1 - ov.opacityFade)
-    ).toFixed(3);
+    setStyle(
+      character.group,
+      "opacity",
+      ((1 - (1 - ov.dotPulse.tone) * ov.dotsAmount) * (1 - ov.opacityFade)).toFixed(3),
+    );
 
     const Jc = clamp(yl / FX.FORM_MORPH_THRESHOLD, 0, 1);
     const pencil =
@@ -236,9 +238,9 @@ function create(dependencies, options) {
         Jc <= 0 ? liveRing : GEO.lerpRing(liveRing, to, K2(Jc)),
       );
     }
-    character.body.setAttribute("d", bodyD);
-    if (character.bodyGlow) character.bodyGlow.setAttribute("d", bodyD);
-    character.clipPath.setAttribute("d", bodyD);
+    setAttribute(character.body, "d", bodyD);
+    if (character.bodyGlow) setAttribute(character.bodyGlow, "d", bodyD);
+    setAttribute(character.clipPath, "d", bodyD);
 
     character.fx.paint(
       now,
@@ -262,7 +264,7 @@ function create(dependencies, options) {
         cameraAmount *
         shrink;
     const half = VIEW_HALF / zoom;
-    character.svg.setAttribute(
+    setAttribute(character.svg,
       "viewBox",
       `${(VIEW_MID - half).toFixed(2)} ${(VIEW_MID - half).toFixed(2)} ${(half * 2).toFixed(2)} ${(half * 2).toFixed(2)}`,
     );
@@ -284,7 +286,7 @@ function create(dependencies, options) {
       !!(
         frame.gazeTarget || frame.pointerRaw
       );
-    character.eyesG.setAttribute(
+    setAttribute(character.eyesG,
       "transform",
       Math.abs(frame.faceRoll) > 0.01
         ? `rotate(${frame.faceRoll.toFixed(2)} ${R} ${R})`
@@ -332,13 +334,14 @@ function create(dependencies, options) {
         const Ti = shape.radius * 1.3;
         const Ui = Math.cos(Gn);
         const Si = 0.55 + 0.45 * clamp((Ui + 1) / 2, 0, 1);
-        el.style.display = "";
-        el.setAttribute("cx", (R + Ti * Math.sin(Gn)).toFixed(1));
-        el.setAttribute("cy", (R - Ti * 0.38 * Math.cos(Gn) - 8).toFixed(1));
-        el.setAttribute("r", (7.5 * Si * hum).toFixed(2));
-        el.setAttribute("opacity", ((0.3 + 0.7 * Si) * hum).toFixed(3));
+        character.fx.setVisible(el, true);
+        setAttribute(el, "cx", (R + Ti * Math.sin(Gn)).toFixed(1));
+        setAttribute(el, "cy", (R - Ti * 0.38 * Math.cos(Gn) - 8).toFixed(1));
+        setAttribute(el, "r", (7.5 * Si * hum).toFixed(2));
+        setAttribute(el, "opacity", ((0.3 + 0.7 * Si) * hum).toFixed(3));
       }
     }
+    character.fx.commitVisibility();
   }
 
   /** @param {number} value */
@@ -354,7 +357,7 @@ function create(dependencies, options) {
     view.paintServer = null;
     view.blurFilter = null;
     view.bodyGlow = null;
-    view.body.setAttribute("fill", "var(--fg, #000)");
+    setAttribute(view.body, "fill", "var(--fg, #000)");
   }
 
   /** @param {SvgView} view @param {SVGGradientElement} gradient @param {readonly import("../types.js").PaintStop[]} stops */
@@ -364,9 +367,9 @@ function create(dependencies, options) {
         "http://www.w3.org/2000/svg",
         "stop",
       );
-      element.setAttribute("offset", percent(stop.offset));
-      element.setAttribute("stop-color", stop.color);
-      element.setAttribute("stop-opacity", String(stop.opacity));
+      setAttribute(element, "offset", percent(stop.offset));
+      setAttribute(element, "stop-color", stop.color);
+      setAttribute(element, "stop-opacity", String(stop.opacity));
       gradient.appendChild(element);
     }
   }
@@ -375,7 +378,7 @@ function create(dependencies, options) {
   function setBodyPaint(view, paint) {
     clearBodyPaint(view);
     if (paint.kind === "solid") {
-      view.body.setAttribute("fill", paint.color);
+      setAttribute(view.body, "fill", paint.color);
       return;
     }
 
@@ -384,18 +387,18 @@ function create(dependencies, options) {
       ns,
       paint.kind === "linear" ? "linearGradient" : "radialGradient",
     );
-    gradient.setAttribute("id", view.paintId);
-    gradient.setAttribute("gradientUnits", "objectBoundingBox");
-    gradient.setAttribute("color-interpolation", "sRGB");
+    setAttribute(gradient, "id", view.paintId);
+    setAttribute(gradient, "gradientUnits", "objectBoundingBox");
+    setAttribute(gradient, "color-interpolation", "sRGB");
     if (paint.kind === "linear") {
       const radians = (paint.angle * Math.PI) / 180;
       const dx = Math.sin(radians);
       const dy = -Math.cos(radians);
       const extent = (Math.abs(dx) + Math.abs(dy)) / 2;
-      gradient.setAttribute("x1", percent(0.5 - dx * extent));
-      gradient.setAttribute("y1", percent(0.5 - dy * extent));
-      gradient.setAttribute("x2", percent(0.5 + dx * extent));
-      gradient.setAttribute("y2", percent(0.5 + dy * extent));
+      setAttribute(gradient, "x1", percent(0.5 - dx * extent));
+      setAttribute(gradient, "y1", percent(0.5 - dy * extent));
+      setAttribute(gradient, "x2", percent(0.5 + dx * extent));
+      setAttribute(gradient, "y2", percent(0.5 + dy * extent));
     } else if (paint.kind === "radial") {
       const [cx, cy] = paint.center;
       const radius = Math.max(
@@ -404,26 +407,26 @@ function create(dependencies, options) {
         Math.hypot(cx, 1 - cy),
         Math.hypot(1 - cx, 1 - cy),
       );
-      gradient.setAttribute("cx", percent(cx));
-      gradient.setAttribute("cy", percent(cy));
-      gradient.setAttribute("r", percent(radius));
+      setAttribute(gradient, "cx", percent(cx));
+      setAttribute(gradient, "cy", percent(cy));
+      setAttribute(gradient, "r", percent(radius));
     }
     appendStops(view, gradient, paint.stops);
     view.defs.appendChild(gradient);
     view.paintServer = gradient;
     const fill = `url(#${view.paintId})`;
-    view.body.setAttribute("fill", fill);
+    setAttribute(view.body, "fill", fill);
 
     if (paint.kind !== "radial" || paint.blur <= 0) return;
     const filter = view.document.createElementNS(ns, "filter");
-    filter.setAttribute("id", view.blurId);
-    filter.setAttribute("filterUnits", "userSpaceOnUse");
-    filter.setAttribute("x", "-100");
-    filter.setAttribute("y", "-100");
-    filter.setAttribute("width", "460");
-    filter.setAttribute("height", "460");
+    setAttribute(filter, "id", view.blurId);
+    setAttribute(filter, "filterUnits", "userSpaceOnUse");
+    setAttribute(filter, "x", "-100");
+    setAttribute(filter, "y", "-100");
+    setAttribute(filter, "width", "460");
+    setAttribute(filter, "height", "460");
     const blur = view.document.createElementNS(ns, "feGaussianBlur");
-    blur.setAttribute("stdDeviation", String(paint.blur));
+    setAttribute(blur, "stdDeviation", String(paint.blur));
     filter.appendChild(blur);
     view.defs.appendChild(filter);
     view.blurFilter = filter;
@@ -431,10 +434,10 @@ function create(dependencies, options) {
     const glow = view.document.createElementNS(ns, "path");
     const bodyPath = view.body.getAttribute("d");
     if (bodyPath === null) throw new Error("身体路径尚未初始化");
-    glow.setAttribute("d", bodyPath);
-    glow.setAttribute("fill", fill);
-    glow.setAttribute("filter", `url(#${view.blurId})`);
-    glow.setAttribute("pointer-events", "none");
+    setAttribute(glow, "d", bodyPath);
+    setAttribute(glow, "fill", fill);
+    setAttribute(glow, "filter", `url(#${view.blurId})`);
+    setAttribute(glow, "pointer-events", "none");
     view.group.insertBefore(glow, view.body);
     view.bodyGlow = glow;
   }
@@ -474,8 +477,7 @@ function create(dependencies, options) {
         if (name === "--fg") view.fx.setPrimitiveColor(value);
       },
       setViewportStyle(name, value) {
-        if (name === "transform") view.svg.style.transform = value;
-        else view.svg.style.transformOrigin = value;
+        setStyle(view.svg, name, value);
       },
       updateParticles: (now, dt, particleOptions) =>
         view.particles.update(now, dt, particleOptions),

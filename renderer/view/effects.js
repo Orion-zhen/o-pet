@@ -1,4 +1,5 @@
 /* 视觉特效组合器。具体公式由 renderer/view/effects/ 下的定义模块提供。 */
+import { setAttribute, setStyle } from "./dom.js";
 import { create as createCatalog } from "./effects/catalog.js";
 import { create as createFormSampler } from "./effects/form-sampler.js";
 
@@ -17,7 +18,7 @@ function create(dependencies) {
       const make = (tag, attrs) => {
         const node = doc.createElementNS(NS, tag);
         if (attrs)
-          for (const key in attrs) node.setAttribute(key, attrs[key]);
+          for (const key in attrs) setAttribute(node, key, attrs[key]);
         return node;
       };
       this.rand = options.rand;
@@ -60,6 +61,7 @@ function create(dependencies) {
       this.pencilPath = "";
       this.bangPath = "";
       this._reduce = false;
+      this.visible = new Set();
     }
 
     attach(svg, bodyGroup) {
@@ -77,22 +79,36 @@ function create(dependencies) {
     ensureThoughtDots() {
       while (this.thoughtDots.length < 3) {
         const dot = this.document.createElementNS(NS, "circle");
-        dot.setAttribute("cx", "0");
-        dot.setAttribute("cy", "0");
-        dot.setAttribute("r", "0");
-        dot.setAttribute("style", "fill:var(--fg);display:none");
-        dot.style.fill = this.primitiveColor;
+        setAttribute(dot, "cx", "0");
+        setAttribute(dot, "cy", "0");
+        setAttribute(dot, "r", "0");
+        setAttribute(dot, "style", "fill:var(--fg);display:none");
+        setStyle(dot, "fill", this.primitiveColor);
         this.bodyGroup.insertBefore(dot, this.bodyNode);
         this.thoughtDots.push(dot);
       }
     }
 
     hideAll() {
-      for (const node of this.dots) node.style.display = "none";
-      for (const node of this.rings) node.style.display = "none";
-      for (const node of this.parts) node.style.display = "none";
-      for (const node of this.thoughtDots) node.style.display = "none";
-      for (const node of this.glyphs) node.style.display = "none";
+      this.visible.clear();
+      this.commitVisibility();
+    }
+
+    setVisible(node, visible) {
+      if (visible) this.visible.add(node);
+      else this.visible.delete(node);
+    }
+
+    commitVisibility() {
+      for (const nodes of [
+        this.dots, this.rings, this.parts, this.thoughtDots, this.glyphs,
+      ]) {
+        for (const node of nodes)
+          setStyle(node, "display", this.visible.has(node) ? "" : "none");
+      }
+      for (const ring of this.rings) {
+        if (this.visible.has(ring)) setStyle(ring, "stroke", this.primitiveColor);
+      }
     }
 
     amount(name, current, previous, amount, mix) {
@@ -112,7 +128,7 @@ function create(dependencies) {
       direction,
       reduce = false,
     ) {
-      this.hideAll();
+      this.visible.clear();
       this._reduce = reduce;
       const radiusPx = catalog.radiusFor(current, previous, mix);
       for (const definition of catalog.ordered) {
@@ -134,9 +150,6 @@ function create(dependencies) {
           radiusPx,
           reduce,
         });
-      }
-      for (const ring of this.rings) {
-        if (ring.style.display === "") ring.style.stroke = this.primitiveColor;
       }
     }
 
@@ -170,7 +183,7 @@ function create(dependencies) {
         ...this.parts,
         ...this.thoughtDots,
       ])
-        primitive.style.fill = color;
+        setStyle(primitive, "fill", color);
     }
 
     resetInk() {

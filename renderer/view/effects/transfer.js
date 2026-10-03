@@ -1,5 +1,6 @@
 // @ts-check
 /* 发送、接收和上传传输特效。 */
+import { setAttribute } from "../dom.js";
 
 const SEND_MS = 1500;
 const RECEIVE_MS = 1700;
@@ -20,12 +21,12 @@ function create(dependencies) {
     const primary = layer.parts[5];
     const primaryOn = progress > 0 && progress < 1;
     if (primary === undefined) throw new Error("发送粒子节点缺失");
-    primary.style.display = primaryOn ? "" : "none";
+    layer.setVisible(primary, primaryOn);
     if (primaryOn) {
-      primary.setAttribute("cx", (frame.radius + dx * distance).toFixed(1));
-      primary.setAttribute("cy", (frame.radius + dy * distance).toFixed(1));
-      primary.setAttribute("r", (10 * (1 - eased * 0.55) * amount).toFixed(2));
-      primary.setAttribute("opacity", (amount * (1 - eased * eased)).toFixed(3));
+      setAttribute(primary, "cx", (frame.radius + dx * distance).toFixed(1));
+      setAttribute(primary, "cy", (frame.radius + dy * distance).toFixed(1));
+      setAttribute(primary, "r", (10 * (1 - eased * 0.55) * amount).toFixed(2));
+      setAttribute(primary, "opacity", (amount * (1 - eased * eased)).toFixed(3));
     }
     const secondary = layer.parts[6];
     if (secondary === undefined) throw new Error("发送尾迹节点缺失");
@@ -34,22 +35,22 @@ function create(dependencies) {
       secondaryProgress * secondaryProgress * (0.4 + 0.6 * secondaryProgress);
     const secondaryOn =
       progress > 0 && secondaryProgress > 0 && secondaryProgress < 1;
-    secondary.style.display = secondaryOn ? "" : "none";
+    layer.setVisible(secondary, secondaryOn);
     if (secondaryOn) {
       const secondaryDistance = 108 * secondaryEased;
-      secondary.setAttribute(
+      setAttribute(secondary,
         "cx",
         (frame.radius + dx * secondaryDistance).toFixed(1),
       );
-      secondary.setAttribute(
+      setAttribute(secondary,
         "cy",
         (frame.radius + dy * secondaryDistance).toFixed(1),
       );
-      secondary.setAttribute(
+      setAttribute(secondary,
         "r",
         (5 * (1 - secondaryEased * 0.6) * amount).toFixed(2),
       );
-      secondary.setAttribute(
+      setAttribute(secondary,
         "opacity",
         (amount * 0.3 * (1 - secondaryEased)).toFixed(3),
       );
@@ -58,15 +59,15 @@ function create(dependencies) {
     if (ring === undefined) throw new Error("发送波纹节点缺失");
     const ringProgress = clamp((cycle - 0.18) / 0.3, 0, 1);
     const ringOn = ringProgress > 0 && ringProgress < 1;
-    ring.style.display = ringOn ? "" : "none";
+    layer.setVisible(ring, ringOn);
     if (ringOn) {
       ring.removeAttribute("stroke-dasharray");
       ring.removeAttribute("transform");
-      ring.setAttribute("cx", `${frame.radius}`);
-      ring.setAttribute("cy", `${frame.radius}`);
-      ring.setAttribute("r", (20 + 34 * Rc(ringProgress)).toFixed(1));
-      ring.setAttribute("stroke-width", (2.8 * (1 - ringProgress)).toFixed(2));
-      ring.setAttribute(
+      setAttribute(ring, "cx", `${frame.radius}`);
+      setAttribute(ring, "cy", `${frame.radius}`);
+      setAttribute(ring, "r", (20 + 34 * Rc(ringProgress)).toFixed(1));
+      setAttribute(ring, "stroke-width", (2.8 * (1 - ringProgress)).toFixed(2));
+      setAttribute(ring,
         "opacity",
         (amount * (1 - ringProgress) * 0.8).toFixed(3),
       );
@@ -91,19 +92,19 @@ function create(dependencies) {
     const particle = layer.parts[5];
     if (particle === undefined) throw new Error("接收粒子节点缺失");
     const particleOn = progress < 1;
-    particle.style.display = particleOn ? "" : "none";
+    layer.setVisible(particle, particleOn);
     if (particleOn) {
       const curve = 18 * Math.sin(progress * Math.PI) * (1 - eased * 0.7);
-      particle.setAttribute(
+      setAttribute(particle,
         "cx",
         (frame.radius + dx * distance + -dy * curve).toFixed(1),
       );
-      particle.setAttribute(
+      setAttribute(particle,
         "cy",
         (frame.radius + dy * distance + dx * curve).toFixed(1),
       );
-      particle.setAttribute("r", (3.5 + 6.5 * eased).toFixed(2));
-      particle.setAttribute(
+      setAttribute(particle, "r", (3.5 + 6.5 * eased).toFixed(2));
+      setAttribute(particle,
         "opacity",
         (
           amount *
@@ -116,15 +117,15 @@ function create(dependencies) {
     if (ring === undefined) throw new Error("接收波纹节点缺失");
     const ringProgress = clamp((cycle - 0.58) / 0.32, 0, 1);
     const ringOn = ringProgress > 0 && ringProgress < 1;
-    ring.style.display = ringOn ? "" : "none";
+    layer.setVisible(ring, ringOn);
     if (ringOn) {
       ring.removeAttribute("stroke-dasharray");
       ring.removeAttribute("transform");
-      ring.setAttribute("cx", `${frame.radius}`);
-      ring.setAttribute("cy", `${frame.radius}`);
-      ring.setAttribute("r", (20 + 26 * Rc(ringProgress)).toFixed(1));
-      ring.setAttribute("stroke-width", (2.8 * (1 - ringProgress)).toFixed(2));
-      ring.setAttribute(
+      setAttribute(ring, "cx", `${frame.radius}`);
+      setAttribute(ring, "cy", `${frame.radius}`);
+      setAttribute(ring, "r", (20 + 26 * Rc(ringProgress)).toFixed(1));
+      setAttribute(ring, "stroke-width", (2.8 * (1 - ringProgress)).toFixed(2));
+      setAttribute(ring,
         "opacity",
         (amount * (1 - ringProgress) * 0.8).toFixed(3),
       );
@@ -142,7 +143,7 @@ function create(dependencies) {
       if (node === undefined) throw new Error("上传对接粒子节点缺失");
       const progress = clamp((elapsed - (0.2 + index * 1.3)) / 0.9, 0, 1);
       if (progress <= 0) {
-        node.style.display = "none";
+        layer.setVisible(node, false);
         continue;
       }
       const eased = 1 - Math.pow(1 - progress, 3);
@@ -154,11 +155,11 @@ function create(dependencies) {
         Math.sin(frame.now * 0.003 + index) * 2;
       const startX = frame.radius - 120 + index * 30;
       const startY = frame.radius + 95;
-      node.style.display = "";
-      node.setAttribute("cx", (startX + (targetX - startX) * eased).toFixed(1));
-      node.setAttribute("cy", (startY + (targetY - startY) * eased).toFixed(1));
-      node.setAttribute("r", ((7 + 3 * eased) * amount).toFixed(2));
-      node.setAttribute(
+      layer.setVisible(node, true);
+      setAttribute(node, "cx", (startX + (targetX - startX) * eased).toFixed(1));
+      setAttribute(node, "cy", (startY + (targetY - startY) * eased).toFixed(1));
+      setAttribute(node, "r", ((7 + 3 * eased) * amount).toFixed(2));
+      setAttribute(node,
         "opacity",
         (amount * clamp(progress * 4, 0, 1)).toFixed(3),
       );

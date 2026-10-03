@@ -1,5 +1,6 @@
 // @ts-check
 /* 铅笔形变、书写轨迹和姿态采样。 */
+import { setAttribute, setStyle } from "../dom.js";
 
 const DURATION_MS = 2500;
 
@@ -71,14 +72,14 @@ function create(dependencies) {
     const length = 68;
     const dx = Math.cos(angle) * length;
     const dy = Math.sin(angle) * length;
-    glyph.style.display = "";
-    glyph.setAttribute("d", layer.pencilPath);
-    glyph.style.fill = "var(--fg)";
-    glyph.setAttribute(
+    layer.setVisible(glyph, true);
+    setAttribute(glyph, "d", layer.pencilPath);
+    setStyle(glyph, "fill", "var(--fg)");
+    setAttribute(glyph,
       "transform",
       `translate(${(frame.radius + (pencil.x + dx) * frame.amount).toFixed(1)} ${(frame.radius + (pencil.y + pencil.wig * 0.15 + dy) * frame.amount).toFixed(1)}) rotate(${(pencil.rot * frame.amount).toFixed(1)}) scale(${Rc(frame.amount).toFixed(3)}) translate(${-frame.radius} ${-frame.radius})`,
     );
-    glyph.setAttribute(
+    setAttribute(glyph,
       "opacity",
       clamp(frame.amount * 1.6 - 0.3, 0, 1).toFixed(3),
     );
@@ -99,16 +100,16 @@ function create(dependencies) {
     const line = layer.glyphs[1];
     if (line === undefined) throw new Error("铅笔轨迹节点缺失");
     if (layer.ink.length < 2) {
-      line.style.display = "none";
+      layer.setVisible(line, false);
     } else {
-      line.style.display = "";
-      line.style.fill = "none";
-      line.style.stroke = "var(--fg)";
-      line.setAttribute("stroke-width", "6");
-      line.setAttribute("stroke-linecap", "round");
-      line.setAttribute("stroke-linejoin", "round");
-      line.setAttribute("d", smoothLine(layer.ink));
-      line.setAttribute(
+      layer.setVisible(line, true);
+      setStyle(line, "fill", "none");
+      setStyle(line, "stroke", "var(--fg)");
+      setAttribute(line, "stroke-width", "6");
+      setAttribute(line, "stroke-linecap", "round");
+      setAttribute(line, "stroke-linejoin", "round");
+      setAttribute(line, "d", smoothLine(layer.ink));
+      setAttribute(line,
         "opacity",
         clamp(frame.amount * 1.2, 0, 1).toFixed(3),
       );

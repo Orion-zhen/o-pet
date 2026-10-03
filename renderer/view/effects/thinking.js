@@ -1,4 +1,5 @@
 // @ts-check
+import { setAttribute } from "../dom.js";
 /* 思考圆点与吸收脉冲。 */
 
 const DOT_R = 22;
@@ -95,7 +96,7 @@ function create(dependencies) {
         1,
       );
       if (delayed <= 0.004) {
-        node.style.display = "none";
+        layer.setVisible(node, false);
         continue;
       }
       const eased = Rc(delayed);
@@ -108,13 +109,13 @@ function create(dependencies) {
         frame.reduce,
       );
       const scale = ((DOT_R * eased * dotPulse.pop) / frame.radius) * 1.02;
-      node.style.display = "";
-      node.setAttribute("d", layer.circlePath);
-      node.setAttribute(
+      layer.setVisible(node, true);
+      setAttribute(node, "d", layer.circlePath);
+      setAttribute(node,
         "transform",
         `translate(${(frame.radius + (position - frame.radius) * enter).toFixed(1)} ${(frame.radius - dotPulse.lift).toFixed(1)}) scale(${scale.toFixed(4)}) translate(${-frame.radius} ${-frame.radius})`,
       );
-      node.setAttribute("opacity", (eased * dotPulse.tone).toFixed(3));
+      setAttribute(node, "opacity", (eased * dotPulse.tone).toFixed(3));
     }
   }
 
@@ -126,11 +127,11 @@ function create(dependencies) {
       for (let index = 0; index < 3; index++) {
         const dot = layer.thoughtDots[index];
         if (dot === undefined) throw new Error("思考吸收圆点节点缺失");
-        dot.style.display = "";
-        dot.setAttribute("cx", (frame.radius - 18 - index * 13).toFixed(1));
-        dot.setAttribute("cy", (frame.radius + 122 - index * 15).toFixed(1));
-        dot.setAttribute("r", ((3 + index * 2.5) * amount).toFixed(2));
-        dot.setAttribute("opacity", (0.8 * amount).toFixed(3));
+        layer.setVisible(dot, true);
+        setAttribute(dot, "cx", (frame.radius - 18 - index * 13).toFixed(1));
+        setAttribute(dot, "cy", (frame.radius + 122 - index * 15).toFixed(1));
+        setAttribute(dot, "r", ((3 + index * 2.5) * amount).toFixed(2));
+        setAttribute(dot, "opacity", (0.8 * amount).toFixed(3));
       }
       return;
     }
@@ -144,14 +145,14 @@ function create(dependencies) {
         index,
       );
       if (sample === null) {
-        dot.style.display = "none";
+        layer.setVisible(dot, false);
         continue;
       }
-      dot.style.display = "";
-      dot.setAttribute("cx", sample.x.toFixed(1));
-      dot.setAttribute("cy", sample.y.toFixed(1));
-      dot.setAttribute("r", (sample.radius * amount).toFixed(2));
-      dot.setAttribute("opacity", (sample.opacity * amount).toFixed(3));
+      layer.setVisible(dot, true);
+      setAttribute(dot, "cx", sample.x.toFixed(1));
+      setAttribute(dot, "cy", sample.y.toFixed(1));
+      setAttribute(dot, "r", (sample.radius * amount).toFixed(2));
+      setAttribute(dot, "opacity", (sample.opacity * amount).toFixed(3));
     }
   }
 

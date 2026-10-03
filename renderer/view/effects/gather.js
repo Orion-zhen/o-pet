@@ -1,5 +1,6 @@
 // @ts-check
 /* 生成聚集粒子。 */
+import { setAttribute } from "../dom.js";
 
 const CYCLE_ON = 2000;
 
@@ -18,23 +19,23 @@ function create(dependencies) {
         1,
       );
       if (elapsed >= 1) {
-        node.style.display = "none";
+        layer.setVisible(node, false);
         continue;
       }
       const eased = 1 - Math.pow(1 - elapsed, 3);
       const angle = index * 2.4 + elapsed * 2.2;
       const distance = 96 * (1 - eased);
-      node.style.display = "";
-      node.setAttribute(
+      layer.setVisible(node, true);
+      setAttribute(node,
         "cx",
         (frame.radius + distance * Math.cos(angle)).toFixed(1),
       );
-      node.setAttribute(
+      setAttribute(node,
         "cy",
         (frame.radius + distance * Math.sin(angle) * 0.8).toFixed(1),
       );
-      node.setAttribute("r", (9 * (0.5 + 0.5 * eased) * amount).toFixed(2));
-      node.setAttribute(
+      setAttribute(node, "r", (9 * (0.5 + 0.5 * eased) * amount).toFixed(2));
+      setAttribute(node,
         "opacity",
         (amount * clamp(elapsed * 5, 0, 1) * (1 - eased * 0.25)).toFixed(3),
       );
