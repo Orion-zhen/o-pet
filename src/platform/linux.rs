@@ -60,21 +60,19 @@ struct SystemTray {
 }
 
 impl SystemTray {
-    fn new(commands: async_channel::Sender<TrayCommand>) -> io::Result<Self> {
-        let mut icon = super::icon::load_tray_icon()?;
+    fn new(commands: async_channel::Sender<TrayCommand>) -> Self {
+        let mut icon = super::icon::load_tray_icon();
         for pixel in icon.pixels.as_chunks_mut::<4>().0 {
             pixel.rotate_right(1);
         }
-        Ok(Self {
+        Self {
             commands,
             icon: ksni::Icon {
-                width: i32::try_from(icon.width)
-                    .map_err(|_| io::Error::other("托盘图标宽度超出范围"))?,
-                height: i32::try_from(icon.height)
-                    .map_err(|_| io::Error::other("托盘图标高度超出范围"))?,
+                width: i32::try_from(icon.width).expect("内嵌托盘图标宽度必须在 i32 范围内"),
+                height: i32::try_from(icon.height).expect("内嵌托盘图标高度必须在 i32 范围内"),
                 data: icon.pixels,
             },
-        })
+        }
     }
 
     fn send(&self, command: TrayCommand) {
@@ -161,7 +159,7 @@ impl DragSession {
     }
 
     fn delta(&mut self, dx: f64, dy: f64) -> Option<(i32, i32)> {
-        if !self.active || !dx.is_finite() || !dy.is_finite() {
+        if !self.active {
             return None;
         }
         self.residual_x += dx;
@@ -225,10 +223,7 @@ pub(crate) fn run(action: Option<String>) -> gtk::glib::ExitCode {
     };
 
     let (tray_sender, tray_receiver) = async_channel::unbounded();
-    let tray = match SystemTray::new(tray_sender).and_then(|tray| {
-        tray.spawn()
-            .map_err(|error| io::Error::other(error.to_string()))
-    }) {
+    let tray = match SystemTray::new(tray_sender).spawn() {
         Ok(tray) => tray,
         Err(error) => {
             eprintln!("无法创建 o-pet 托盘图标: {error}");
@@ -378,6 +373,19 @@ fn build_window(
         Rc::clone(&page_loaded),
     );
 
+    let mapped_page_loaded = Rc::clone(&page_loaded);
+    web_view.connect_map(move |view| {
+        if mapped_page_loaded.get() {
+            send_visibility(view, true);
+        }
+    });
+    let unmapped_page_loaded = Rc::clone(&page_loaded);
+    web_view.connect_unmap(move |view| {
+        if unmapped_page_loaded.get() {
+            send_visibility(view, false);
+        }
+    });
+
     let weak_web_view = web_view.downgrade();
     let updates_page_loaded = Rc::clone(&page_loaded);
     gtk::glib::MainContext::default().spawn_local(async move {
@@ -518,6 +526,20 @@ fn is_internal_document_uri(uri: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('#'))
 }
 
+fn send_visibility(web_view: &WebView, visible: bool) {
+    web_view.evaluate_javascript(
+        &format!("window.oPet.setVisible({visible})"),
+        None,
+        None,
+        None::<&gtk::gio::Cancellable>,
+        |result| {
+            if let Err(error) = result {
+                eprintln!("无法向渲染页面发送可见性: {error}");
+            }
+        },
+    );
+}
+
 fn send_preferences(web_view: &WebView, preferences: &RendererPreferences) {
     let payload = serde_json::to_string(preferences).expect("renderer preferences must serialize");
     let script = format!("window.oPet.setPreferences({payload})");
@@ -601,6 +623,7 @@ fn connect_ready_handler(
             return;
         };
         page_loaded.set(true);
+        send_visibility(&web_view, web_view.is_mapped());
         send_preferences(&web_view, &preferences.borrow());
         if let Some(action) = &action {
             show_action(&web_view, action);
@@ -751,7 +774,7 @@ fn save_placement(store: &PlacementStore, placement: &WindowPlacement) {
 
 #[cfg(test)]
 mod tests {
-    use super::{DragSession, SystemTray, TrayCommand, is_internal_document_uri};
+    use super::{DragMessage, DragSession, SystemTray, TrayCommand, is_internal_document_uri};
 
     #[test]
     fn tray_menu_can_request_a_reload() {
@@ -792,6 +815,19 @@ mod tests {
             "o-pet://app/host.js",
         ] {
             assert!(!is_internal_document_uri(uri), "不应允许 {uri}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_drag_deltas_at_the_json_boundary() {
+        for value in ["NaN", "Infinity", "-Infinity", "1e309", "-1e309", "null"] {
+            for (dx, dy) in [(value, "0"), ("0", value)] {
+                let json = format!(r#"{{"phase":"move","dx":{dx},"dy":{dy}}}"#);
+                assert!(
+                    serde_json::from_str::<DragMessage>(&json).is_err(),
+                    "{json}"
+                );
+            }
         }
     }
 

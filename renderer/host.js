@@ -346,6 +346,12 @@ function create(options, overrides = {}) {
       idle.hover();
   }
 
+  /** @param {boolean} visible */
+  function setVisible(visible) {
+    if (visible) scheduler.resume("host-hidden");
+    else scheduler.pause("host-hidden");
+  }
+
   function onVisibilityChange() {
     if (doc.hidden) scheduler.pause("hidden");
     else scheduler.resume("hidden");
@@ -394,6 +400,7 @@ function create(options, overrides = {}) {
     destroy,
     finishNativeDrag: pointer.finishNativeDrag,
     setPreferences: preferences.set,
+    setVisible,
     showAction,
     update,
   });

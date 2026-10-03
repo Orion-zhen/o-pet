@@ -1,5 +1,3 @@
-use std::{error::Error, io};
-
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
     NSColor, NSFloatingWindowLevel, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
@@ -37,15 +35,11 @@ pub(super) fn window_builder(builder: WindowBuilder) -> WindowBuilder {
         .with_automatic_window_tabbing(false)
 }
 
-pub(super) fn configure_window(window: &Window) -> Result<(), Box<dyn Error>> {
-    let _main_thread = MainThreadMarker::new().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::Unsupported,
-            "AppKit 窗口必须在 macOS 主线程配置",
-        )
-    })?;
+pub(super) fn configure_window(window: &Window) {
+    let _main_thread = MainThreadMarker::new().expect("Tao 窗口在 macOS 主线程创建并配置");
+    // Tao 持有 NSWindow, 借用期间窗口保持有效.
     let ns_window = unsafe { window.ns_window().cast::<NSWindow>().as_ref() }
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Tao 未提供 NSWindow"))?;
+        .expect("已创建的 Tao 窗口必须提供 NSWindow");
 
     ns_window.setStyleMask(NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel);
     ns_window.setLevel(NSFloatingWindowLevel);
@@ -60,7 +54,6 @@ pub(super) fn configure_window(window: &Window) -> Result<(), Box<dyn Error>> {
     ns_window.setOpaque(false);
     ns_window.setBackgroundColor(Some(&NSColor::clearColor()));
     ns_window.setHasShadow(false);
-    Ok(())
 }
 
 pub(super) fn monitor_id(monitor: &MonitorHandle) -> String {

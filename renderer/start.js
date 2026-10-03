@@ -31,6 +31,7 @@ function start(browser, createRenderer = create) {
   browser.oPet = Object.freeze({
     finishNativeDrag: renderer.finishNativeDrag,
     setPreferences: renderer.setPreferences,
+    setVisible: renderer.setVisible,
     showAction: renderer.showAction,
     update: renderer.update,
   });

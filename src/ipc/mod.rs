@@ -1,49 +1,54 @@
+mod connection;
 mod endpoint;
 mod protocol;
 #[cfg(unix)]
 mod readiness;
+#[cfg(windows)]
+mod windows;
 
-use std::{
-    io,
-    io::Read,
-    path::{Path, PathBuf},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread::{self, JoinHandle},
-    time::Duration,
-};
+#[cfg(windows)]
+pub use windows::Server;
 
-use interprocess::local_socket::{
-    GenericFilePath, ListenerOptions, Stream, ToFsName as _, traits::Listener as _,
-};
+use std::{io, sync::Arc};
+
+use interprocess::local_socket::ListenerOptions;
+#[cfg(unix)]
+use interprocess::local_socket::{GenericFilePath, Stream, ToFsName as _, traits::Listener as _};
 
 #[cfg(unix)]
 use interprocess::local_socket::traits::Stream as _;
 #[cfg(unix)]
 use std::{
     fs,
+    io::Read,
     os::{fd::AsFd, unix::net::UnixStream},
+    path::{Path, PathBuf},
+    sync::Mutex,
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 
-use crate::coordinator::{AnimationUpdate, Coordinator};
-use protocol::{ClientMessage, LineDecoder, parse_message};
+use crate::coordinator::AnimationUpdate;
+#[cfg(unix)]
+use crate::coordinator::Coordinator;
+#[cfg(unix)]
+use connection::Connection;
 
 pub use endpoint::resolve_endpoint;
 pub use protocol::MAX_LINE_BYTES;
 
-const POLL_INTERVAL: Duration = Duration::from_millis(10);
+#[cfg(unix)]
+const ACCEPT_ERROR_DELAY: Duration = Duration::from_millis(10);
 
 type AnimationSink = Arc<dyn Fn(AnimationUpdate) + Send + Sync>;
 
+#[cfg(unix)]
 pub struct Server {
-    shutdown: Arc<AtomicBool>,
     accept_thread: Option<JoinHandle<()>>,
-    #[cfg(unix)]
     cancel_writer: Option<UnixStream>,
 }
 
+#[cfg(unix)]
 impl Server {
     pub fn bind(
         endpoint: impl Into<PathBuf>,
@@ -52,26 +57,13 @@ impl Server {
         let endpoint = endpoint.into();
         endpoint::prepare_parent(&endpoint)?;
         let listener = create_listener(&endpoint)?;
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let thread_shutdown = Arc::clone(&shutdown);
         let sink: AnimationSink = Arc::new(sink);
-        #[cfg(unix)]
         let (cancel_writer, cancel_reader) = UnixStream::pair()?;
         let accept_thread = thread::Builder::new()
             .name("o-pet-ipc-listener".into())
-            .spawn(move || {
-                accept_connections(
-                    listener,
-                    thread_shutdown,
-                    sink,
-                    #[cfg(unix)]
-                    Arc::new(cancel_reader),
-                )
-            })?;
+            .spawn(move || accept_connections(listener, sink, Arc::new(cancel_reader)))?;
         Ok(Self {
-            shutdown,
             accept_thread: Some(accept_thread),
-            #[cfg(unix)]
             cancel_writer: Some(cancel_writer),
         })
     }
@@ -81,8 +73,6 @@ impl Server {
     }
 
     fn stop(&mut self) {
-        self.shutdown.store(true, Ordering::Release);
-        #[cfg(unix)]
         drop(self.cancel_writer.take());
         if let Some(thread) = self.accept_thread.take() {
             let _ = thread.join();
@@ -90,23 +80,23 @@ impl Server {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop();
     }
 }
 
+#[cfg(unix)]
 fn create_listener(endpoint: &Path) -> io::Result<interprocess::local_socket::Listener> {
     let name = endpoint.as_os_str().to_fs_name::<GenericFilePath>()?;
     let listener = match listener_options(name)?.create_sync() {
         Ok(listener) => listener,
-        #[cfg(unix)]
         Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
             reclaim_stale_socket(endpoint, error)?
         }
         Err(error) => return Err(error),
     };
-    #[cfg(unix)]
     secure_socket_permissions(endpoint)?;
     Ok(listener)
 }
@@ -119,11 +109,9 @@ fn secure_socket_permissions(endpoint: &Path) -> io::Result<()> {
 }
 
 fn listener_options(name: interprocess::local_socket::Name<'_>) -> io::Result<ListenerOptions<'_>> {
-    use interprocess::local_socket::ListenerNonblockingMode;
-
-    let options = ListenerOptions::new()
-        .name(name)
-        .nonblocking(ListenerNonblockingMode::Accept);
+    let options = ListenerOptions::new().name(name);
+    #[cfg(unix)]
+    let options = options.nonblocking(interprocess::local_socket::ListenerNonblockingMode::Both);
     platform_listener_options(options)
 }
 
@@ -178,18 +166,17 @@ fn reclaim_stale_socket(
     listener_options(retry_name)?.create_sync()
 }
 
+#[cfg(unix)]
 fn accept_connections(
     listener: interprocess::local_socket::Listener,
-    shutdown: Arc<AtomicBool>,
     sink: AnimationSink,
-    #[cfg(unix)] cancellation: Arc<UnixStream>,
+    cancellation: Arc<UnixStream>,
 ) {
     let coordinator = Arc::new(Mutex::new(Coordinator::default()));
     let mut readers: Vec<JoinHandle<()>> = Vec::new();
     let mut next_connection_id = 1_u64;
 
-    while !shutdown.load(Ordering::Acquire) {
-        #[cfg(unix)]
+    loop {
         {
             let interprocess::local_socket::Listener::UdSocket(socket) = &listener;
             match readiness::wait_for_input(socket.as_fd(), &cancellation) {
@@ -205,34 +192,17 @@ fn accept_connections(
             Ok(stream) => {
                 let connection_id = next_connection_id;
                 next_connection_id += 1;
-                coordinator
-                    .lock()
-                    .expect("coordinator mutex poisoned")
-                    .connect(connection_id);
-                let reader_shutdown = Arc::clone(&shutdown);
-                let reader_coordinator = Arc::clone(&coordinator);
-                let reader_sink = Arc::clone(&sink);
-                #[cfg(unix)]
+                let connection =
+                    Connection::new(connection_id, Arc::clone(&coordinator), Arc::clone(&sink));
                 let reader_cancellation = Arc::clone(&cancellation);
                 readers.push(thread::spawn(move || {
-                    read_connection(
-                        stream,
-                        connection_id,
-                        reader_shutdown,
-                        reader_coordinator,
-                        reader_sink,
-                        #[cfg(unix)]
-                        reader_cancellation,
-                    );
+                    read_connection(stream, connection, reader_cancellation);
                 }));
             }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                #[cfg(windows)]
-                thread::sleep(POLL_INTERVAL);
-            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
             Err(error) => {
                 eprintln!("o-pet 接受 IPC 连接失败: {error}");
-                thread::sleep(POLL_INTERVAL);
+                thread::sleep(ACCEPT_ERROR_DELAY);
             }
         }
         reap_finished(&mut readers);
@@ -243,6 +213,7 @@ fn accept_connections(
     }
 }
 
+#[cfg(unix)]
 fn reap_finished(readers: &mut Vec<JoinHandle<()>>) {
     let mut index = 0;
     while index < readers.len() {
@@ -255,28 +226,10 @@ fn reap_finished(readers: &mut Vec<JoinHandle<()>>) {
     }
 }
 
-fn read_connection(
-    mut stream: Stream,
-    connection_id: u64,
-    shutdown: Arc<AtomicBool>,
-    coordinator: Arc<Mutex<Coordinator>>,
-    sink: AnimationSink,
-    #[cfg(unix)] cancellation: Arc<UnixStream>,
-) {
-    // macOS 接受的连接可能继承监听 socket 的非阻塞状态.
-    // 显式使用非阻塞读取和可取消的就绪等待, 不依赖读取超时来避免忙循环.
-    #[cfg(unix)]
-    if let Err(error) = stream.set_nonblocking(true) {
-        eprintln!("o-pet 设置 IPC 非阻塞读取失败: {error}");
-        disconnect(connection_id, &coordinator, &sink);
-        return;
-    }
-
-    let mut hello_received = false;
-    let mut decoder = LineDecoder::default();
+#[cfg(unix)]
+fn read_connection(mut stream: Stream, mut connection: Connection, cancellation: Arc<UnixStream>) {
     let mut buffer = [0_u8; 8192];
-    'connection: while !shutdown.load(Ordering::Acquire) {
-        #[cfg(unix)]
+    loop {
         {
             let Stream::UdSocket(socket) = &stream;
             match readiness::wait_for_input(socket.as_fd(), &cancellation) {
@@ -288,40 +241,10 @@ fn read_connection(
                 }
             }
         }
-        #[cfg(windows)]
-        match windows_stream_has_input(&stream) {
-            Ok(true) => {}
-            Ok(false) => {
-                thread::sleep(POLL_INTERVAL);
-                continue;
-            }
-            Err(_) => break,
-        }
         match stream.read(&mut buffer) {
             Ok(0) => break,
             Ok(length) => {
-                let batch = decoder.push(&buffer[..length]);
-                for line in batch.lines {
-                    match parse_message(&line) {
-                        ClientMessage::Hello { .. } if !hello_received => {
-                            hello_received = true;
-                        }
-                        ClientMessage::Event(event) if hello_received => {
-                            publish_change(
-                                coordinator
-                                    .lock()
-                                    .expect("coordinator mutex poisoned")
-                                    .event(connection_id, event),
-                                &sink,
-                            );
-                        }
-                        ClientMessage::Goodbye => break 'connection,
-                        ClientMessage::Hello { .. }
-                        | ClientMessage::Event(_)
-                        | ClientMessage::Ignore => {}
-                    }
-                }
-                if batch.oversized {
+                if !connection.receive(&buffer[..length]) {
                     break;
                 }
             }
@@ -333,31 +256,6 @@ fn read_connection(
             Err(_) => break,
         }
     }
-    disconnect(connection_id, &coordinator, &sink);
-}
-
-#[cfg(windows)]
-fn windows_stream_has_input(stream: &Stream) -> io::Result<bool> {
-    use std::os::windows::io::AsRawHandle;
-
-    use windows::Win32::{Foundation::HANDLE, System::Pipes::PeekNamedPipe};
-
-    let Stream::NamedPipe(stream) = stream;
-    let handle = HANDLE(stream.inner().as_raw_handle());
-    let mut available = 0;
-    unsafe { PeekNamedPipe(handle, None, 0, None, Some(&mut available), None) }
-        .map_err(io::Error::other)?;
-    Ok(available != 0)
-}
-
-fn disconnect(connection_id: u64, coordinator: &Mutex<Coordinator>, sink: &AnimationSink) {
-    publish_change(
-        coordinator
-            .lock()
-            .expect("coordinator mutex poisoned")
-            .disconnect(connection_id),
-        sink,
-    );
 }
 
 fn publish_change(update: Option<AnimationUpdate>, sink: &AnimationSink) {

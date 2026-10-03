@@ -1,10 +1,7 @@
-use std::{
-    env, io,
-    path::{Path, PathBuf},
-};
+use std::{env, io, path::PathBuf};
 
 #[cfg(unix)]
-use std::fs;
+use std::{fs, path::Path};
 
 #[cfg(windows)]
 use std::ffi::OsString;
@@ -97,10 +94,5 @@ pub fn prepare_parent(endpoint: &Path) -> io::Result<()> {
             "o-pet 端点目录必须仅允许当前用户访问",
         ));
     }
-    Ok(())
-}
-
-#[cfg(windows)]
-pub fn prepare_parent(_endpoint: &Path) -> io::Result<()> {
     Ok(())
 }

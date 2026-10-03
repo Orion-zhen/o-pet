@@ -405,6 +405,51 @@ describe("渲染器组合根行为", () => {
 		expect(character.paused).toEqual([]);
 	});
 
+	it.each(["page", "native"])("%s 先恢复时仍等待另一可见性来源，重复通知不重置计时", (first) => {
+		const { api, character, clock, document } = createHarness();
+		clock.advance(500);
+		api.setVisible(false);
+		api.setVisible(false);
+		document.hidden = true;
+		document.dispatch("visibilitychange");
+		clock.advance(10_000);
+		const showPage = (): void => {
+			document.hidden = false;
+			document.dispatch("visibilitychange");
+		};
+		if (first === "page") showPage();
+		else api.setVisible(true);
+		clock.advance(10_000);
+		expect(latest(character).pose).toBe("spawning");
+		if (first === "page") api.setVisible(true);
+		else showPage();
+		api.setVisible(true);
+		clock.advance(1499);
+		expect(latest(character).pose).toBe("spawning");
+		clock.advance(1);
+		expect(latest(character).pose).toBe("idle");
+		api.destroy();
+	});
+
+	it("原生隐藏但页面仍报告可见时也暂停，新活动在恢复后播放", () => {
+		const { api, character, clock, document } = createHarness();
+		clock.advance(2000);
+		api.setVisible(false);
+		expect(document.hidden).toBe(false);
+		clock.advance(60_000);
+		expect(api.update({ activity: "coding" })).toBe(true);
+		clock.advance(60_000);
+		expect(latest(character).pose).toBe("idle");
+		api.setVisible(true);
+		clock.advance(350);
+		expect(latest(character).effect).toBe("writing");
+		api.destroy();
+		api.setVisible(false);
+		api.setVisible(true);
+		clock.advance(10_000);
+		expect(character.destroyed).toBe(true);
+	});
+
 	it("隐藏期间不推进空闲阶段", () => {
 		const { character, clock, document } = createHarness();
 		clock.advance(2000);

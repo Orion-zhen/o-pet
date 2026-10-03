@@ -195,8 +195,7 @@ fn take_interpolation(tokens: &mut Vec<&str>) -> Result<Interpolation, String> {
 
 fn parse_degrees(value: &str) -> Result<f64, String> {
     let number = value
-        .get(..value.len().saturating_sub(3))
-        .filter(|_| value.get(value.len().saturating_sub(3)..) == Some("deg"))
+        .strip_suffix("deg")
         .ok_or_else(|| "线性渐变角度必须使用 deg".to_string())?
         .parse::<f64>()
         .map_err(|_| "线性渐变角度无效".to_string())?;
@@ -212,7 +211,7 @@ fn parse_percentage(value: &str) -> Result<f64, String> {
         .ok_or_else(|| "径向渐变中心必须使用百分比".to_string())?
         .parse::<f64>()
         .map_err(|_| "径向渐变中心无效".to_string())?;
-    if !number.is_finite() || !(0.0..=100.0).contains(&number) {
+    if !(0.0..=100.0).contains(&number) {
         return Err("径向渐变中心必须在 0% 到 100% 之间".into());
     }
     Ok(number / 100.0)
@@ -366,6 +365,26 @@ mod tests {
                 ]),
                 "{input}",
             );
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_gradient_coordinates() {
+        for value in ["NaN", "inf", "-inf", "1e309"] {
+            let linear = format!("linear-gradient({value}deg, red, blue)");
+            assert!(parse_body_paint(&linear, None).is_err(), "{linear}");
+            for (x, y) in [(value, "50"), ("50", value)] {
+                let radial = format!("radial-gradient(circle at {x}% {y}%, red, blue)");
+                assert!(parse_body_paint(&radial, None).is_err(), "{radial}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_angle_suffixes_and_numbers() {
+        for angle in ["d", "de", "deg", "90", "90de", "90度", "角度deg"] {
+            let gradient = format!("linear-gradient({angle}, red, blue)");
+            assert!(parse_body_paint(&gradient, None).is_err(), "{gradient}");
         }
     }
 

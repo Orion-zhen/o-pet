@@ -138,6 +138,8 @@ function create(dependencies, options) {
       this.eyeIdx = 0;
       /** @type {[import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]] | null} */
       this._fromPolys = null;
+      /** @type {{ from: [import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]], to: [import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]], amount: number, polys: [import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]] } | null} */
+      this._eyePolysCache = null;
 
       this.t0 = this.clock.now();
       this.motionAt = this.t0;
@@ -547,7 +549,13 @@ function create(dependencies, options) {
       const from = this._fromPolys || eyes[this.eyeFrom];
       const to = eyes[this.eyeTo];
       if (!from || !to) throw new Error("眼形索引超出几何数据范围");
-      return [lerpPoly(from[0], to[0], t), lerpPoly(from[1], to[1], t)];
+      const cached = this._eyePolysCache;
+      if (cached && cached.from === from && cached.to === to && cached.amount === t)
+        return cached.polys;
+      /** @type {[import("../types.js").GeometryPoint[], import("../types.js").GeometryPoint[]]} */
+      const polys = [lerpPoly(from[0], to[0], t), lerpPoly(from[1], to[1], t)];
+      this._eyePolysCache = { from, to, amount: t, polys };
+      return polys;
     }
 
     _pn(turns = 1, dir = this.sign()) {

@@ -151,12 +151,10 @@ impl PlacementStore {
     }
 
     pub fn save(&self, placement: &WindowPlacement) -> io::Result<()> {
-        let parent = self.path.parent().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "o-pet 配置路径缺少父目录")
-        })?;
+        let parent = self.path.parent().expect("窗口位置文件路径必须包含父目录");
         fs::create_dir_all(parent)?;
         let temporary = temporary_path(&self.path);
-        let bytes = serde_json::to_vec(placement).map_err(io::Error::other)?;
+        let bytes = serde_json::to_vec(placement).expect("窗口位置必须可序列化");
         let result = (|| {
             let mut file = File::create(&temporary)?;
             file.write_all(&bytes)?;

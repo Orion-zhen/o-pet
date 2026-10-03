@@ -558,15 +558,22 @@ function create(dependencies) {
     });
   }
 
-  function formRing(kind, center, teardropPath) {
-    if (kind === "pencil" && teardropPath) {
-      return rotateRing(
-        polarRing(flattenRingPath(teardropPath), center),
-        DEFAULT_RING_POINTS / 2,
-        center,
-      );
-    }
-    return circleRing(center);
+  const formModelCache = new Map();
+  function formModel(kind) {
+    const key = kind === "pencil" ? "pencil" : "circle";
+    let model = formModelCache.get(key);
+    if (model) return model;
+    const center = DATA.Re;
+    const ring = key === "pencil"
+      ? rotateRing(
+          polarRing(flattenRingPath(DATA.shapes.teardrop.path), center),
+          DEFAULT_RING_POINTS / 2,
+          center,
+        )
+      : circleRing(center);
+    model = Object.freeze({ ring, path: closedSpline(ring) });
+    formModelCache.set(key, model);
+    return model;
   }
 
   return Object.freeze({
@@ -584,7 +591,7 @@ function create(dependencies) {
     shapeMetrics,
     circlePathOf,
     deformRing,
-    formRing,
+    formModel,
   });
 }
 

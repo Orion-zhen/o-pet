@@ -77,7 +77,7 @@ impl SystemTray {
         let separator = PredefinedMenuItem::separator();
         let quit = MenuItem::with_id(QUIT_MENU_ID, "退出", true, None);
         let menu = Menu::with_items(&[&show, &hide, &reload, &separator, &quit])?;
-        let icon = super::icon::load_tray_icon()?;
+        let icon = super::icon::load_tray_icon();
         let icon = Icon::from_rgba(icon.pixels, icon.width, icon.height)?;
         let icon = TrayIconBuilder::new()
             .with_tooltip("o-pet")
@@ -134,7 +134,7 @@ impl DragSession {
     }
 
     fn delta(&mut self, dx: f64, dy: f64, scale: f64) -> Option<(i32, i32)> {
-        if !self.active || !dx.is_finite() || !dy.is_finite() {
+        if !self.active {
             return None;
         }
         self.residual_x += dx * scale;
@@ -217,6 +217,9 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
             .with_visible_on_all_workspaces(true),
     )
     .build(&event_loop)?;
+    #[cfg(target_os = "macos")]
+    native::configure_window(&window);
+    #[cfg(target_os = "windows")]
     native::configure_window(&window)?;
 
     let page_proxy = event_loop.create_proxy();
@@ -276,8 +279,8 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                 }
             }
             Event::UserEvent(UserEvent::Menu(event)) => match SystemTray::command(&event) {
-                Some(TrayCommand::Show) => window.set_visible(true),
-                Some(TrayCommand::Hide) => window.set_visible(false),
+                Some(TrayCommand::Show) => set_window_visible(&window, &webview, page_ready, true),
+                Some(TrayCommand::Hide) => set_window_visible(&window, &webview, page_ready, false),
                 Some(TrayCommand::Reload) => {
                     match reload_config(&window, target, &mut placement, &store) {
                         Ok(reloaded) => {
@@ -302,10 +305,11 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                     button: MouseButton::Left,
                     ..
                 },
-            )) => window.set_visible(true),
+            )) => set_window_visible(&window, &webview, page_ready, true),
             Event::UserEvent(UserEvent::Tray(_)) => {}
             Event::UserEvent(UserEvent::Page(PageMessage::Ready)) => {
                 page_ready = true;
+                send_visibility(&webview, window.is_visible());
                 send_preferences(&webview, &preferences);
                 if let Some(action) = &action {
                     show_action(&webview, action);
@@ -357,7 +361,7 @@ pub(super) fn run(action: Option<String>) -> Result<(), Box<dyn Error>> {
                     update_and_save_placement(&window, target, &mut placement, &store);
                 }
             }
-            Event::Reopen { .. } => window.set_visible(true),
+            Event::Reopen { .. } => set_window_visible(&window, &webview, page_ready, true),
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
@@ -588,6 +592,19 @@ fn finish_native_drag(webview: &WebView) {
     }
 }
 
+fn set_window_visible(window: &Window, webview: &WebView, page_ready: bool, visible: bool) {
+    if page_ready {
+        send_visibility(webview, visible);
+    }
+    window.set_visible(visible);
+}
+
+fn send_visibility(webview: &WebView, visible: bool) {
+    if let Err(error) = webview.evaluate_script(&format!("window.oPet.setVisible({visible})")) {
+        eprintln!("无法向渲染页面发送可见性: {error}");
+    }
+}
+
 fn send_preferences(webview: &WebView, preferences: &RendererPreferences) {
     let payload = serde_json::to_string(preferences).expect("renderer preferences must serialize");
     if let Err(error) = webview.evaluate_script(&format!("window.oPet.setPreferences({payload})")) {
@@ -698,6 +715,19 @@ mod tests {
                 assert_eq!(drag.delta(0.2, 0.2, 2.0), Some((1, 1)));
             }
             _ => panic!("拖动消息类型不正确"),
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_drag_deltas_at_the_json_boundary() {
+        for value in ["NaN", "Infinity", "-Infinity", "1e309", "-1e309", "null"] {
+            for (dx, dy) in [(value, "0"), ("0", value)] {
+                let json = format!(r#"{{"type":"drag","phase":"move","dx":{dx},"dy":{dy}}}"#);
+                assert!(
+                    serde_json::from_str::<PageMessage>(&json).is_err(),
+                    "{json}"
+                );
+            }
         }
     }
 

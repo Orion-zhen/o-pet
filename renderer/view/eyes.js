@@ -32,6 +32,25 @@ function create(dependencies, random) {
     return lid;
   }
 
+  let previousPolys = null;
+  let previousGeometry = null;
+  function eyeGeometry(polys) {
+    if (polys === previousPolys) return previousGeometry;
+    const cents = [centroid(polys[0]), centroid(polys[1])];
+    const widths = [0, 0];
+    for (let i = 0; i < 2; i++) {
+      for (const p of polys[i])
+        widths[i] = Math.max(widths[i], Math.abs(p[0] - cents[i][0]));
+    }
+    previousPolys = polys;
+    previousGeometry = {
+      cents,
+      widths,
+      paths: [polyPath(polys[0]), polyPath(polys[1])],
+    };
+    return previousGeometry;
+  }
+
   function paintEyes(opt) {
     const {
       now,
@@ -71,11 +90,7 @@ function create(dependencies, random) {
       leftDX: face.leftDX ?? 0,
     };
     const sX = $i.leftDX * freeBlend;
-    const cents = [centroid(polys[0]), centroid(polys[1])];
-    let a1 = 0,
-      o1 = 0;
-    for (const p of polys[0]) a1 = Math.max(a1, Math.abs(p[0] - cents[0][0]));
-    for (const p of polys[1]) o1 = Math.max(o1, Math.abs(p[0] - cents[1][0]));
+    const { cents, widths: [a1, o1], paths } = eyeGeometry(polys);
     const l1 = Math.abs(cents[1][0] - (cents[0][0] + sX)) * $i.sx;
     const _ee = a1 + o1 > 0.5 ? clamp(l1 / (a1 + o1), 0.35, 4) : 4;
     const Uee =
@@ -117,7 +132,7 @@ function create(dependencies, random) {
     for (let i = 0; i < 2; i++) {
       const poly = polys[i];
       const [Gn, Ti] = cents[i];
-      setAttribute(eyeEls[i], "d", polyPath(poly));
+      setAttribute(eyeEls[i], "d", paths[i]);
       const eyeLid = opt.eyeLids?.[i] ?? 1;
       const lid = winkLid(blinkX * eyeLid, now, winkAt, winkEye, i);
       const Ea = Gn + (i === 0 ? sX : 0);

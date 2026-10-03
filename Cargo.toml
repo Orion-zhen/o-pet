@@ -38,9 +38,11 @@ toml = "*"
 libc = "*"
 
 [target.'cfg(windows)'.dependencies]
+interprocess = { version = "*", features = ["tokio"] }
+tokio = { version = "*", features = ["io-util", "macros", "net", "rt", "sync"] }
 sha2 = "*"
 widestring = "*"
-windows = { version = "*", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "*", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 tao = { version = "*", default-features = false, features = ["rwh_06"] }
@@ -54,6 +56,9 @@ objc2-foundation = { version = "*", default-features = false, features = ["std"]
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "*"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "*", features = ["Win32_System_Threading"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { package = "gtk4", version = "*", features = ["v4_10"] }

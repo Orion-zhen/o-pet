@@ -6,6 +6,7 @@ describe("渲染页面组合根", () => {
 	it("页面组合根注入浏览器随机源并暴露原生拖动完成入口", () => {
 		let receivedRandom: unknown;
 		let nativeDragFinished = false;
+		const visibility: boolean[] = [];
 		const random = (): number => 0.25;
 		const document = {
 			addEventListener(): void {},
@@ -19,6 +20,9 @@ describe("渲染页面组合根", () => {
 				nativeDragFinished = true;
 			},
 			setPreferences(): void {},
+			setVisible(visible: boolean): void {
+				visibility.push(visible);
+			},
 			showAction(): void {},
 			update(): boolean {
 				return true;
@@ -47,5 +51,11 @@ describe("渲染页面组合根", () => {
 			}
 		).oPet.finishNativeDrag();
 		expect(nativeDragFinished).toBe(true);
+		const client = (browserStub as typeof browserStub & {
+			oPet: { setVisible(visible: boolean): void };
+		}).oPet;
+		client.setVisible(false);
+		client.setVisible(true);
+		expect(visibility).toEqual([false, true]);
 	});
 });

@@ -26,9 +26,6 @@ pub(crate) fn asset(path: &str) -> Option<Asset> {
 
 fn normalize_path(path: &str) -> Option<&str> {
     let path = path.strip_prefix('/').unwrap_or(path);
-    if path.is_empty() {
-        return Some("index.html");
-    }
     if path
         .split('/')
         .any(|component| component.is_empty() || component == "." || component == "..")
@@ -55,7 +52,7 @@ mod tests {
 
     #[test]
     fn embeds_renderer_entrypoint_and_resources() {
-        let index = asset("/").expect("缺少渲染页面");
+        let index = asset("/index.html").expect("缺少渲染页面");
         let index = str::from_utf8(&index.body).expect("渲染页面必须是 UTF-8");
         assert!(index.contains("./style.css"));
         assert!(index.contains("./bootstrap.js"));
@@ -79,6 +76,8 @@ mod tests {
     #[test]
     fn rejects_unknown_types_and_non_canonical_paths() {
         for path in [
+            "",
+            "/",
             "/missing.js",
             "/catalog/action-groups.txt",
             "/../Cargo.toml",

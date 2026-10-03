@@ -168,7 +168,6 @@ function create(dependencies, options) {
     const Jc = clamp(yl / FX.FORM_MORPH_THRESHOLD, 0, 1);
     const pencil =
       frame.formKind === "pencil" || frame.formPrev === "pencil";
-    const tear = shapeFor("teardrop").path;
     const spinAmt = ex.turnRadians;
     const spinning = spinAmt != null;
     const restRing = morphing
@@ -224,16 +223,12 @@ function create(dependencies, options) {
     let bodyD;
     if (Jc >= 1) {
       bodyD = pencil
-        ? GEO.closedSpline(GEO.formRing(frame.formKind, R, tear))
+        ? GEO.formModel(frame.formKind).path
         : character.fx.circlePath;
     } else if (Jc <= 0 && !morphing && !turned && !deformed) {
       bodyD = shape.path;
     } else {
-      const to = GEO.formRing(
-        frame.formKind || frame.formPrev,
-        R,
-        tear,
-      );
+      const to = GEO.formModel(frame.formKind || frame.formPrev).ring;
       bodyD = GEO.closedSpline(
         Jc <= 0 ? liveRing : GEO.lerpRing(liveRing, to, K2(Jc)),
       );

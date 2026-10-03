@@ -30,13 +30,7 @@ pub(super) fn wait_for_input(fd: BorrowedFd<'_>, cancellation: &UnixStream) -> i
             }
             return Err(error);
         }
-        if descriptors[1].revents != 0 {
-            return Ok(false);
-        }
-        if descriptors[0].revents & libc::POLLNVAL != 0 {
-            return Err(io::Error::from_raw_os_error(libc::EBADF));
-        }
-        return Ok(true);
+        return Ok(descriptors[1].revents == 0);
     }
 }
 

@@ -66,7 +66,6 @@ impl LineDecoder {
             }
             self.line.push(*byte);
             if self.line.len() > MAX_LINE_BYTES {
-                self.line.clear();
                 batch.oversized = true;
                 break;
             }

@@ -571,6 +571,28 @@ describe("渲染器视觉运行时", () => {
 		harness.character.destroy();
 	});
 
+	it("眼形稳定时复用几何，变形和中途切换表情时更新且不修改旧帧", () => {
+		const harness = createVisualHarness();
+		harness.character.playPreset(harness.presets.fromState("idle"));
+		harness.frame(16);
+		const stable = harness.latestFrame().eyePolys;
+		for (let time = 32; time <= 160; time += 16) {
+			harness.frame(time);
+			expect(harness.latestFrame().eyePolys).toBe(stable);
+		}
+		const before = JSON.stringify(stable);
+		harness.character.setPreset(harness.presets.scenes.happy);
+		harness.frame(176);
+		const morphing = harness.latestFrame().eyePolys;
+		expect(morphing).not.toBe(stable);
+		const inFlight = JSON.stringify(morphing);
+		harness.character.setPreset(harness.presets.scenes.sleeping);
+		harness.frame(192);
+		expect(JSON.stringify(stable)).toBe(before);
+		expect(JSON.stringify(morphing)).toBe(inFlight);
+		harness.character.destroy();
+	});
+
 	it("提交只读帧快照且后续动画帧不会修改旧快照", () => {
 		const harness = createVisualHarness();
 		const initial = harness.latestFrame();
@@ -676,6 +698,45 @@ describe("渲染器视觉运行时", () => {
 		expect(svg.children.length).toBeGreaterThan(0);
 		api.destroy();
 		visual.character.destroy();
+	});
+
+	it("原生隐藏停止实际绘制，恢复后的帧与未经过隐藏的动画一致", () => {
+		const visual = createVisualHarness();
+		const hosts = [0, 1].map(() => {
+			const clock = new ClockStub();
+			const document = new DocumentStub();
+			const svg = new SvgElementStub("svg");
+			const api = visual.factory.create({
+				clock, document, svg,
+				frameClock: clock,
+				motionQuery: new MotionQueryStub(),
+				now: () => clock.now,
+				pointerTarget: document.body,
+				postDrag: () => {},
+				random: () => 0.5,
+				viewportWidth: () => 1,
+			});
+			clock.advance(2000);
+			return { api, clock, svg };
+		});
+		const hidden = hosts[0]!;
+		const reference = hosts[1]!;
+		hidden.api.setVisible(false);
+		const writes = vi.spyOn(SvgElementStub.prototype, "setAttribute");
+		try {
+			hidden.clock.advance(60_000);
+			expect(writes).not.toHaveBeenCalled();
+			hidden.api.setVisible(true);
+			for (let i = 0; i < 60; i++) {
+				hidden.clock.advance(16);
+				reference.clock.advance(16);
+				expect(svgHash(hidden.svg)).toBe(svgHash(reference.svg));
+			}
+		} finally {
+			writes.mockRestore();
+			for (const host of hosts) host.api.destroy();
+			visual.character.destroy();
+		}
 	});
 
 	it("暂停期间切换场景后可渲染一次且不恢复帧循环", () => {

@@ -102,6 +102,37 @@ fn malformed_and_unknown_lines_do_not_change_state_and_later_lines_recover() {
 }
 
 #[test]
+fn fragmented_handshake_and_messages_preserve_protocol_order() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let endpoint = test_endpoint(&directory);
+    let (server, activities) = start_server(&endpoint);
+    let mut client = connect(&endpoint);
+    send(
+        &mut client,
+        b"{\"type\":\"event\",\"event\":{\"type\":\"thinking_started\"}}\n",
+    );
+    assert!(activities.recv_timeout(Duration::from_millis(100)).is_err());
+    send(&mut client, b"{\"type\":\"hel");
+    send(&mut client, b"lo\",\"clientId\":\"one\",\"sessionId\":\"s\"}\n{\"type\":\"event\",\"event\":{\"type\":\"thinking_started\"}}");
+    assert!(activities.recv_timeout(Duration::from_millis(100)).is_err());
+    send(&mut client, b"\n");
+    assert_eq!(
+        receive(&activities),
+        AnimationUpdate::steady(Activity::Thinking)
+    );
+    send(
+        &mut client,
+        b"{\"type\":\"goodbye\"}\n{\"type\":\"event\",\"event\":{\"type\":\"reply_started\"}}\n",
+    );
+    assert_eq!(
+        receive(&activities),
+        AnimationUpdate::steady(Activity::Idle)
+    );
+    assert!(activities.recv_timeout(Duration::from_millis(100)).is_err());
+    server.shutdown();
+}
+
+#[test]
 fn oversized_line_closes_only_that_connection_and_bounds_the_decoder() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let endpoint = test_endpoint(&directory);
@@ -161,6 +192,8 @@ fn shutdown_wakes_an_idle_listener_and_releases_the_endpoint() {
     let (server, _activities) = start_server(&endpoint);
     shutdown_with_deadline(server);
     assert!(!endpoint.exists());
+    let (replacement, _activities) = start_server(&endpoint);
+    shutdown_with_deadline(replacement);
 }
 
 #[test]
